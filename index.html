@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- GITHUB PAGES READY - VERSION FINAL -->
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -20,14 +21,10 @@
 
     <style>
         body { font-family: 'Assistant', sans-serif; }
-        
-        /* פס גלילה מעוצב */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(192, 38, 211, 0.8); }
-
-        /* אנימציות */
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
     </style>
@@ -37,16 +34,57 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        // ייבוא ספריות מותאם לדפדפן (ESM via CDN)
-        import React, { useState, useEffect } from "https://esm.sh/react@18.2.0";
+        import React, { useState, useEffect, useRef } from "https://esm.sh/react@18.2.0";
         import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
         import { 
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
             User, Info, Home, LayoutGrid, FlaskConical, Library, LogOut, 
-            UserCircle, Lock, Mail, Calendar, Edit2, ShieldCheck, AlertTriangle, X, Check
+            UserCircle, Lock, Mail, Calendar, Edit2, ShieldCheck, AlertTriangle, X, Check,
+            Cloud, CloudOff, WifiOff
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
-        // --- SECURITY UTILS ---
+        // --- Firebase Imports (Production Setup) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { 
+            getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+            signOut, onAuthStateChanged, updateProfile 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { 
+            getFirestore, collection, doc, setDoc, deleteDoc, 
+            onSnapshot, query, orderBy, serverTimestamp 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+        // --- הגדרות Firebase שלך (מוטמעות) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCDJsjBKWVdMs7vsHmjKi-cbAMy-Huxfgs",
+            authDomain: "shoval-games-wiki-7ff87.firebaseapp.com",
+            projectId: "shoval-games-wiki-7ff87",
+            storageBucket: "shoval-games-wiki-7ff87.firebasestorage.app",
+            messagingSenderId: "1013671724448",
+            appId: "1:1013671724448:web:84c0a3ee694cdc1ef850c5"
+        };
+
+        // משתנים גלובליים
+        let app = null;
+        let auth = null;
+        let db = null;
+        const appId = "shoval-games-wiki-7ff87";
+
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            console.log("Firebase initialized successfully (Production Mode)");
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
+
+        // --- Utils ---
+        const sanitizeInput = (str) => {
+            if (typeof str !== 'string') return str;
+            return str.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        };
+
         const hashPassword = async (password) => {
             const msgBuffer = new TextEncoder().encode(password);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -54,229 +92,228 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         };
 
-        const sanitizeInput = (str) => {
-            if (typeof str !== 'string') return str;
-            return str.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        };
-
+        // --- App Component ---
         function App() {
             // --- STATE ---
-            const [users, setUsers] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('shoval_users_data');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) { return []; }
-            });
-
-            const [currentUser, setCurrentUser] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('shoval_active_user');
-                    return saved ? JSON.parse(saved) : null;
-                } catch (e) { return null; }
-            });
-
-            const [games, setGames] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('shoval_games_data');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) { return []; }
-            });
+            const [user, setUser] = useState(null); 
             
+            // טעינת משחקים (Offline First)
+            const [games, setGames] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('shoval_games_data')) || []; } catch (e) { return []; }
+            });
+            const [localUsers, setLocalUsers] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('shoval_users_data')) || []; } catch (e) { return []; }
+            });
+
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
             const [view, setView] = useState('library'); 
             const [selectedGame, setSelectedGame] = useState(null);
             const [searchTerm, setSearchTerm] = useState('');
             const [editingId, setEditingId] = useState(null); 
 
-            // טופס משחק (תאריך יציאה אינו חובה כאן)
             const [gameForm, setGameForm] = useState({
                 title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' 
             });
-
             const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
-
-            // --- UI STATE ---
             const [toast, setToast] = useState(null); 
             const [confirmModal, setConfirmModal] = useState(null); 
 
             const showToast = (msg, type = 'error') => {
                 setToast({ msg, type });
-                setTimeout(() => setToast(null), 3000);
+                setTimeout(() => setToast(null), 5000);
             };
 
-            // --- AUTOMATIC SAVING ---
+            // --- EFFECTS ---
             useEffect(() => { localStorage.setItem('shoval_games_data', JSON.stringify(games)); }, [games]);
-            useEffect(() => { localStorage.setItem('shoval_users_data', JSON.stringify(users)); }, [users]);
-            useEffect(() => {
-                if (currentUser) localStorage.setItem('shoval_active_user', JSON.stringify(currentUser));
-                else localStorage.removeItem('shoval_active_user');
-            }, [currentUser]);
+            useEffect(() => { localStorage.setItem('shoval_users_data', JSON.stringify(localUsers)); }, [localUsers]);
 
-            // --- AUTH LOGIC ---
+            useEffect(() => {
+                const handleStatusChange = () => setIsOnline(navigator.onLine);
+                window.addEventListener('online', handleStatusChange);
+                window.addEventListener('offline', handleStatusChange);
+                return () => {
+                    window.removeEventListener('online', handleStatusChange);
+                    window.removeEventListener('offline', handleStatusChange);
+                };
+            }, []);
+
+            useEffect(() => {
+                if (!auth) {
+                    const localActive = localStorage.getItem('shoval_active_user');
+                    if (localActive) setUser(JSON.parse(localActive));
+                    return;
+                }
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    if (u) {
+                        setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email, isLocal: false });
+                    } else {
+                        setUser(null);
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!db || !isOnline) return;
+                const gamesRef = collection(db, 'artifacts', appId, 'public', 'data', 'games');
+                const unsubscribe = onSnapshot(gamesRef, (snapshot) => {
+                    const serverGames = snapshot.docs.map(doc => {
+                        const d = doc.data();
+                        return {
+                            id: doc.id,
+                            ...d,
+                            createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : (d.createdAt || new Date().toISOString())
+                        };
+                    });
+                    serverGames.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+                    setGames(serverGames);
+                }, (err) => console.warn("Cloud sync paused:", err));
+                return () => unsubscribe();
+            }, [isOnline]);
+
+            // --- HANDLERS ---
             const handleRegister = async (e) => {
                 e.preventDefault();
-                if (users.some(u => u.username === authForm.username)) {
-                    showToast("שגיאה: שם המשתמש כבר תפוס.", 'error');
-                    return;
+                if (auth && isOnline) {
+                    try {
+                        const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
+                        await updateProfile(cred.user, { displayName: authForm.username });
+                        if (db) {
+                            await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), {
+                                username: authForm.username, email: authForm.email, createdAt: serverTimestamp()
+                            });
+                        }
+                        showToast(`נרשמת בהצלחה לענן!`, 'success');
+                    } catch (err) {
+                        console.error("Registration Error:", err);
+                        let msg = "שגיאת ענן: " + err.code;
+                        if (err.code === 'auth/email-already-in-use') msg = "המייל תפוס";
+                        if (err.code === 'auth/weak-password') msg = "סיסמה חלשה (מינימום 6 תווים)";
+                        if (err.code === 'auth/operation-not-allowed') msg = "שגיאה: יש להפעיל Email/Password במסוף Firebase!";
+                        showToast(msg, 'error');
+                    }
+                } else {
+                    if (localUsers.some(u => u.username === authForm.username)) { showToast("שם משתמש תפוס (מקומי)", 'error'); return; }
+                    const hashedPassword = await hashPassword(authForm.password);
+                    const newUser = { uid: 'local_' + Date.now(), username: authForm.username, email: authForm.email, passwordHash: hashedPassword, isLocal: true };
+                    setLocalUsers([...localUsers, newUser]);
+                    setUser(newUser);
+                    localStorage.setItem('shoval_active_user', JSON.stringify(newUser));
+                    showToast("נרשמת מקומית (אופליין)", 'success');
                 }
-                if (authForm.password.length < 6) {
-                    showToast("הסיסמה חייבת להכיל לפחות 6 תווים.", 'error');
-                    return;
-                }
-                
-                const hashedPassword = await hashPassword(authForm.password);
-                const newUser = {
-                    id: Date.now().toString(),
-                    username: sanitizeInput(authForm.username),
-                    email: sanitizeInput(authForm.email),
-                    passwordHash: hashedPassword
-                };
-
-                setUsers([...users, newUser]);
-                setCurrentUser(newUser);
-                setView('library');
-                setAuthForm({ username: '', email: '', password: '' });
-                showToast(`ברוך הבא, ${newUser.username}!`, 'success');
+                if (!auth || !isOnline || user) { setView('library'); setAuthForm({ username: '', email: '', password: '' }); }
             };
 
             const handleLogin = async (e) => {
                 e.preventDefault();
-                const user = users.find(u => u.username === authForm.username);
-                if (!user) { showToast("פרטי התחברות שגויים.", 'error'); return; }
-
-                const inputHash = await hashPassword(authForm.password);
-                if (user.passwordHash === inputHash) {
-                    setCurrentUser(user);
-                    setView('library');
-                    setAuthForm({ username: '', email: '', password: '' });
-                    showToast("התחברת בהצלחה!", 'success');
-                } else {
-                    showToast("פרטי התחברות שגויים.", 'error');
+                if (auth && isOnline) {
+                    try {
+                        await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
+                        showToast("מחובר לענן", 'success');
+                        setView('library');
+                        setAuthForm({ username: '', email: '', password: '' });
+                        return;
+                    } catch (err) {
+                        console.log("Cloud login failed, checking local...", err);
+                    }
                 }
+                const localUser = localUsers.find(u => u.username === authForm.username || u.email === authForm.email);
+                if (localUser) {
+                    const inputHash = await hashPassword(authForm.password);
+                    if (localUser.passwordHash === inputHash) {
+                        setUser(localUser);
+                        localStorage.setItem('shoval_active_user', JSON.stringify(localUser));
+                        showToast("מחובר מקומית", 'success');
+                        setView('library');
+                        setAuthForm({ username: '', email: '', password: '' });
+                        return;
+                    }
+                }
+                showToast("פרטי התחברות שגויים", 'error');
             };
 
             const requestLogout = () => {
                 setConfirmModal({
-                    msg: "האם אתה בטוח שברצונך להתנתק?",
-                    onConfirm: () => {
-                        setCurrentUser(null);
+                    msg: "האם להתנתק?",
+                    onConfirm: async () => {
+                        if (auth) await signOut(auth);
+                        setUser(null);
+                        localStorage.removeItem('shoval_active_user');
                         setView('library');
-                        showToast("התנתקת מהמערכת", 'success');
+                        showToast("התנתקת", 'success');
                         setConfirmModal(null);
                     }
                 });
             };
 
-            // --- GAME LOGIC ---
-            const handleSaveGame = (e) => {
+            const handleSaveGame = async (e) => {
                 e.preventDefault();
-                if (!currentUser) return;
-
-                const cleanTitle = sanitizeInput(gameForm.title);
-                const cleanDesc = sanitizeInput(gameForm.description);
-                const cleanGenre = sanitizeInput(gameForm.genre);
-
-                if (editingId) {
-                    const originalGame = games.find(g => g.id === editingId);
-                    if (!originalGame || originalGame.authorId !== currentUser.id) {
-                        showToast("שגיאת אבטחה: אין לך הרשאה לערוך מאמר זה.", 'error');
-                        return;
-                    }
-                }
-
+                if (!user) return;
+                const gameId = editingId || (user.isLocal ? 'local_game_' : '') + Date.now().toString();
                 const newGame = {
-                    id: editingId || Date.now().toString(),
-                    ...gameForm,
-                    title: cleanTitle,
-                    description: cleanDesc,
-                    genre: cleanGenre,
-                    authorId: currentUser.id,
-                    authorName: currentUser.username,
-                    updatedAt: new Date().toISOString()
+                    id: gameId, ...gameForm, authorId: user.uid, authorName: user.displayName || user.username || 'Anonymous',
+                    updatedAt: new Date().toISOString(),
+                    createdAt: editingId ? (games.find(g=>g.id===editingId)?.createdAt || new Date().toISOString()) : new Date().toISOString()
                 };
 
-                if (editingId) {
-                    setGames(games.map(g => g.id === editingId ? newGame : g));
-                } else {
-                    newGame.createdAt = new Date().toISOString();
-                    setGames([newGame, ...games]);
-                }
+                let updatedList = editingId ? games.map(g => g.id === editingId ? newGame : g) : [newGame, ...games];
+                setGames(updatedList);
 
+                if (db && isOnline && !user.isLocal) {
+                    try {
+                        const payload = JSON.parse(JSON.stringify(newGame));
+                        if(!editingId) payload.createdAt = serverTimestamp();
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), payload);
+                        showToast("נשמר וסונכרן לענן!", 'success');
+                    } catch (err) {
+                        console.error("Cloud save failed", err);
+                        showToast("נשמר מקומית בלבד", 'error');
+                    }
+                } else { showToast("נשמר מקומית", 'success'); }
+                
                 setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' });
                 setEditingId(null);
-                
-                // לוגיקה מעודכנת: אם יש תאריך והוא עתידי -> בטא, אחרת -> ספרייה
-                const isFuture = newGame.releaseDate && new Date(newGame.releaseDate) > new Date();
-                setView(isFuture ? 'beta' : 'library');
-                showToast("המאמר נשמר בהצלחה!", 'success');
+                setView((newGame.releaseDate && new Date(newGame.releaseDate) > new Date()) ? 'beta' : 'library');
             };
 
             const requestDelete = (gameId) => {
                 const gameToDelete = games.find(g => g.id === gameId);
-                if (gameToDelete && gameToDelete.authorId !== currentUser?.id) {
-                    showToast("שגיאת אבטחה: אינך יכול למחוק מאמר שלא יצרת.", 'error');
-                    return;
-                }
-
+                if (gameToDelete && gameToDelete.authorId !== user?.uid) { showToast("אין לך הרשאה למחוק", 'error'); return; }
                 setConfirmModal({
-                    msg: "האם למחוק את המאמר לצמיתות? פעולה זו אינה הפיכה.",
-                    onConfirm: () => {
+                    msg: "למחוק את המאמר לצמיתות?",
+                    onConfirm: async () => {
                         setGames(games.filter(g => g.id !== gameId));
                         if (selectedGame?.id === gameId) setView('library');
-                        showToast("המאמר נמחק.", 'success');
+                        if (db && isOnline && !user.isLocal && !gameId.startsWith('local_')) {
+                            try {
+                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId));
+                                showToast("נמחק מהענן ומקומית", 'success');
+                            } catch (err) { showToast("נמחק מקומית בלבד", 'error'); }
+                        } else { showToast("נמחק מקומית", 'success'); }
                         setConfirmModal(null);
                     }
                 });
             };
 
             const startEdit = (game) => {
-                if (game.authorId !== currentUser?.id) {
-                    showToast("אין לך הרשאות עריכה למאמר זה.", 'error');
-                    return;
-                }
-                setGameForm(game);
-                setEditingId(game.id);
-                setView('add');
+                if (game.authorId !== user?.uid) { showToast("אין לך הרשאה לערוך", 'error'); return; }
+                setGameForm(game); setEditingId(game.id); setView('add');
             };
 
-            // --- FILTERING ---
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            // לוגיקה מעודכנת למסננים
+            // --- RENDER UI ---
+            const today = new Date(); today.setHours(0,0,0,0);
             const releasedGames = games.filter(g => !g.releaseDate || new Date(g.releaseDate) <= today);
             const betaGames = games.filter(g => g.releaseDate && new Date(g.releaseDate) > today);
-            const allUserGames = games; 
+            const filteredList = (view === 'library' ? releasedGames : view === 'beta' ? betaGames : games).filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase()));
+            const pageTitle = view === 'library' ? "Shoval Games Wiki" : view === 'beta' ? "מאמרי בטא" : "כל המאמרים";
 
-            let currentDisplayGames = [];
-            let pageTitle = "";
-            
-            if (view === 'library') {
-                currentDisplayGames = releasedGames;
-                pageTitle = "Shoval Games Wiki"; 
-            } else if (view === 'beta') {
-                currentDisplayGames = betaGames;
-                pageTitle = "מאמרי בטא (עתידיים)";
-            } else if (view === 'user-articles') {
-                currentDisplayGames = allUserGames;
-                pageTitle = "כל מאמרי המשתמשים";
-            }
-
-            const filteredList = currentDisplayGames.filter(g => 
-                g.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                g.genre.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-
-            // --- RENDER ---
             return (
                 <div className="flex h-screen bg-[#090513] text-slate-100 font-sans overflow-hidden selection:bg-fuchsia-500 selection:text-white" dir="rtl">
-                    
-                    {/* רקע */}
                     <div className="fixed inset-0 pointer-events-none z-0">
                         <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-fuchsia-900/10 rounded-full blur-[120px]"></div>
                         <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-cyan-900/10 rounded-full blur-[120px]"></div>
                     </div>
 
-                    {/* TOAST & MODAL */}
                     {toast && (
                         <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
                             {toast.type === 'error' ? <AlertTriangle size={18} /> : <Check size={18} />}
@@ -285,212 +322,137 @@
                     )}
 
                     {confirmModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                             <div className="bg-[#161b2e] border border-white/10 p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center">
                                 <h3 className="text-xl font-bold text-white mb-4">אישור פעולה</h3>
                                 <p className="text-slate-400 mb-6">{confirmModal.msg}</p>
                                 <div className="flex gap-3 justify-center">
-                                    <button onClick={() => setConfirmModal(null)} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white transition">ביטול</button>
-                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold transition">אשר</button>
+                                    <button onClick={() => setConfirmModal(null)} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white">ביטול</button>
+                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold">אשר</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* SIDEBAR */}
                     <aside className="hidden md:flex w-72 flex-col bg-[#0f0a1e]/90 backdrop-blur-xl border-l border-white/5 h-full relative z-20 shadow-2xl">
-                        <div className="p-8 pb-4">
-                            <div className="flex items-center gap-3 mb-2 cursor-pointer" onClick={() => setView('library')}>
-                                <div className="bg-black p-2.5 rounded-xl border border-white/10 text-white">
-                                    <Gamepad2 size={28} />
-                                </div>
-                                <div>
-                                    <h1 className="text-lg font-black leading-tight text-white">
-                                        Shoval<span className="text-fuchsia-500">Games</span>
-                                    </h1>
-                                    <p className="text-[10px] text-slate-400">ארכיון הגיימינג העולמי</p>
-                                </div>
+                        <div className="p-8 pb-4 cursor-pointer" onClick={() => setView('library')}>
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="bg-black p-2.5 rounded-xl border border-white/10 text-white"><Gamepad2 size={28} /></div>
+                                <div><h1 className="text-lg font-black text-white">Shoval<span className="text-fuchsia-500">Games</span></h1><p className="text-[10px] text-slate-400">ארכיון הגיימינג העולמי</p></div>
                             </div>
                         </div>
-
                         <nav className="flex-1 px-4 py-4 space-y-2">
-                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'library' ? 'bg-white/10 text-white border-r-4 border-fuchsia-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                                <Library size={20} className={view === 'library' ? 'text-fuchsia-400' : ''} />
-                                <span>הספרייה (שוחררו)</span>
-                            </button>
-
-                            {currentUser && (
-                                <>
-                                    <div className="pt-4 pb-2 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">אזור משתמשים</div>
-                                    <button onClick={() => setView('beta')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'beta' ? 'bg-white/10 text-white border-r-4 border-cyan-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                                        <FlaskConical size={20} className={view === 'beta' ? 'text-cyan-400' : ''} />
-                                        <span>מאמרי בטא</span>
-                                    </button>
-                                    <button onClick={() => setView('user-articles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'user-articles' ? 'bg-white/10 text-white border-r-4 border-yellow-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                                        <LayoutGrid size={20} className={view === 'user-articles' ? 'text-yellow-400' : ''} />
-                                        <span>כל המאמרים</span>
-                                    </button>
-                                    <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'add' ? 'bg-white/10 text-white border-r-4 border-green-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                                        <Plus size={20} className={view === 'add' ? 'text-green-400' : ''} />
-                                        <span>הוסף מאמר</span>
-                                    </button>
-                                </>
-                            )}
+                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'library' ? 'bg-white/10 text-white border-r-4 border-fuchsia-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Library size={20} /><span>הספרייה</span></button>
+                            {user && <>
+                                <div className="pt-4 pb-2 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">אזור משתמשים</div>
+                                <button onClick={() => setView('beta')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'beta' ? 'bg-white/10 text-white border-r-4 border-cyan-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><FlaskConical size={20} /><span>מאמרי בטא</span></button>
+                                <button onClick={() => setView('user-articles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'user-articles' ? 'bg-white/10 text-white border-r-4 border-yellow-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><LayoutGrid size={20} /><span>כל המאמרים</span></button>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'add' ? 'bg-white/10 text-white border-r-4 border-green-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Plus size={20} /><span>הוסף מאמר</span></button>
+                            </>}
                         </nav>
-
                         <div className="p-4 border-t border-white/5 bg-black/20">
-                            {currentUser ? (
+                            {user ? (
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-lg relative group">
-                                        {currentUser.username[0].toUpperCase()}
-                                        <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-0.5 border-2 border-[#090513]"><ShieldCheck size={10} className="text-white" /></div>
+                                        {user.displayName?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || 'U'}
+                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 border-[#090513] ${isOnline && !user.isLocal ? 'bg-green-500' : 'bg-slate-500'}`}>{isOnline && !user.isLocal ? <Cloud size={10} className="text-white" /> : <WifiOff size={10} className="text-white" />}</div>
                                     </div>
-                                    <div className="flex-1 overflow-hidden">
-                                        <p className="text-sm font-bold truncate">{currentUser.username}</p>
-                                        <p className="text-[10px] text-green-400 flex items-center gap-1"><Lock size={8} /> חיבור מאובטח</p>
-                                    </div>
+                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName || user.username}</p><p className="text-[10px] text-slate-400 flex items-center gap-1">{user.isLocal ? 'חשבון מקומי' : (isOnline ? 'מחובר לענן' : 'אופליין')}</p></div>
                                     <button onClick={requestLogout} className="p-2 text-slate-400 hover:text-red-400"><LogOut size={18} /></button>
                                 </div>
                             ) : (
-                                <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-lg text-white font-bold shadow-lg text-sm">התחברות / הרשמה</button>
+                                <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-lg text-white font-bold shadow-lg text-sm">התחברות</button>
                             )}
                         </div>
                     </aside>
 
-                    {/* CONTENT */}
                     <main className="flex-1 overflow-y-auto relative scroll-smooth bg-black/20 p-4 md:p-10">
                         <div className="md:hidden flex justify-between items-center mb-6">
                             <h1 className="text-lg font-bold">Shoval<span className="text-fuchsia-500">Games</span></h1>
-                            {currentUser ? <button onClick={requestLogout}><LogOut size={20} /></button> : <button onClick={() => setView('login')} className="text-fuchsia-400 font-bold">התחבר</button>}
+                            {user ? <button onClick={requestLogout}><LogOut size={20} /></button> : <button onClick={() => setView('login')} className="text-fuchsia-400 font-bold">התחבר</button>}
                         </div>
 
-                        {/* FORMS */}
                         {(view === 'login' || view === 'register') && (
-                            <div className="max-w-md mx-auto mt-10 p-8 bg-[#161b2e] rounded-3xl border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300">
-                                <h2 className="text-2xl font-black mb-2 text-center">{view === 'login' ? 'התחברות לארכיון' : 'הרשמה לארכיון'}</h2>
-                                <p className="text-center text-slate-400 text-xs mb-6 flex items-center justify-center gap-1"><ShieldCheck size={14} className="text-green-400" /> המידע שלך מוצפן ומאובטח מקומית</p>
+                            <div className="max-w-md mx-auto mt-10 p-8 bg-[#161b2e] rounded-3xl border border-white/10 shadow-2xl animate-in zoom-in-95">
+                                <h2 className="text-2xl font-black mb-2 text-center">{view === 'login' ? 'כניסה למערכת' : 'הרשמה חדשה'}</h2>
+                                <p className="text-center text-slate-400 text-xs mb-6 flex items-center justify-center gap-1">{isOnline ? <span className="text-green-400 flex gap-1 items-center"><Cloud size={14}/> מצב אונליין</span> : <span className="text-yellow-400 flex gap-1 items-center"><WifiOff size={14}/> מצב אופליין</span>}</p>
                                 <form onSubmit={view === 'login' ? handleLogin : handleRegister} className="space-y-4">
-                                    <div><label className="text-xs text-slate-400 font-bold">שם משתמש</label><input required type="text" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>
-                                    {view === 'register' && <div><label className="text-xs text-slate-400 font-bold">אימייל</label><input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>}
+                                    {view === 'register' && <div><label className="text-xs text-slate-400 font-bold">שם משתמש</label><input required type="text" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>}
+                                    <div><label className="text-xs text-slate-400 font-bold">אימייל</label><input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>
                                     <div><label className="text-xs text-slate-400 font-bold">סיסמה {view === 'register' && "(מינימום 6 תווים)"}</label><input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>
-                                    <button type="submit" className="w-full py-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-xl font-bold text-white shadow-lg mt-4 hover:shadow-fuchsia-500/20 hover:scale-[1.02] transition-all">{view === 'login' ? 'היכנס' : 'הירשם והצפן'}</button>
+                                    <button type="submit" className="w-full py-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-xl font-bold text-white shadow-lg mt-4">{view === 'login' ? 'היכנס' : 'הירשם'}</button>
                                 </form>
-                                <div className="text-center mt-4"><button onClick={() => setView(view === 'login' ? 'register' : 'login')} className="text-sm text-slate-400 underline hover:text-white">{view === 'login' ? 'אין לך חשבון? הירשם כאן' : 'יש לך חשבון? התחבר'}</button></div>
+                                <div className="text-center mt-4 text-sm"><button onClick={() => setView(view === 'login' ? 'register' : 'login')} className="text-slate-400 underline hover:text-white">{view === 'login' ? 'אין חשבון? הירשם' : 'יש חשבון? התחבר'}</button></div>
                                 <div className="text-center mt-4"><button onClick={() => setView('library')} className="text-xs text-slate-500 hover:text-white">המשך כאורח</button></div>
                             </div>
                         )}
 
-                        {/* LISTS */}
                         {(view === 'library' || view === 'beta' || view === 'user-articles') && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
                                 <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-end border-b border-white/5 pb-6">
-                                    <div>
-                                        <h2 className="text-4xl font-black text-white mb-2">{pageTitle}</h2>
-                                        <p className="text-slate-400">
-                                            {view === 'library' && "ברוכים הבאים לארכיון העולמי של משחקי הוידאו ועולם הגימייניג"}
-                                            {view === 'beta' && "משחקים שטרם יצאו - גישה למשתמשים רשומים בלבד"}
-                                            {view === 'user-articles' && "מאגר כל המאמרים שנוצרו על ידי הקהילה"}
-                                        </p>
-                                    </div>
-                                    <div className="relative w-full md:w-96">
-                                        <Search className="absolute right-4 top-3.5 text-slate-400" size={20} />
-                                        <input type="text" placeholder="חיפוש בארכיון..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-[#161b2e] border border-white/10 rounded-xl py-3 pr-12 pl-4 text-white focus:border-fuchsia-500 outline-none transition-colors focus:bg-white/5" />
-                                    </div>
+                                    <div><h2 className="text-4xl font-black text-white mb-2">{pageTitle}</h2><p className="text-slate-400">ברוכים הבאים לארכיון העולמי של משחקי הוידאו</p></div>
+                                    <div className="relative w-full md:w-96"><Search className="absolute right-4 top-3.5 text-slate-400" size={20} /><input type="text" placeholder="חיפוש..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-[#161b2e] border border-white/10 rounded-xl py-3 pr-12 pl-4 text-white focus:border-fuchsia-500 outline-none" /></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                    {filteredList.length === 0 ? (
-                                        <div className="col-span-full py-20 text-center text-slate-500">
-                                            <Gamepad2 size={48} className="mx-auto mb-4 opacity-50" />
-                                            <p>לא נמצאו משחקים בקטגוריה זו</p>
-                                        </div>
-                                    ) : (
-                                        filteredList.map(game => (
-                                            <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className="group bg-[#161b2e] rounded-2xl overflow-hidden border border-white/5 hover:border-fuchsia-500/30 hover:shadow-xl transition-all cursor-pointer relative">
-                                                <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold border border-white/10">
-                                                    {game.releaseDate && new Date(game.releaseDate) > new Date() ? <span className="text-cyan-400">בטא • {new Date(game.releaseDate).toLocaleDateString('he-IL')}</span> : <span className="text-green-400">שוחרר • {game.releaseDate ? new Date(game.releaseDate).toLocaleDateString('he-IL') : 'זמין בספרייה'}</span>}
-                                                </div>
-                                                <div className="h-48 bg-black relative overflow-hidden">
-                                                    {game.imageUrl ? <img src={game.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" /> : <div className="w-full h-full flex items-center justify-center bg-[#0d1117]"><Gamepad2 size={40} className="text-slate-800" /></div>}
-                                                    <div className="absolute bottom-3 right-3 flex gap-2">
-                                                        <span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-fuchsia-400">{game.genre || 'כללי'}</span>
-                                                        <span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-yellow-400 flex items-center gap-1"><Star size={10} fill="currentColor"/> {game.rating || '-'}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="p-5">
-                                                    <h3 className="font-bold text-lg text-white mb-1 group-hover:text-fuchsia-400 line-clamp-1">{game.title}</h3>
-                                                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-3"><UserCircle size={14} /><span>{game.authorName}</span></div>
-                                                    <p className="text-slate-400 text-sm line-clamp-2">{game.description}</p>
-                                                </div>
+                                    {filteredList.map(game => (
+                                        <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className="group bg-[#161b2e] rounded-2xl overflow-hidden border border-white/5 hover:border-fuchsia-500/30 hover:shadow-xl transition-all cursor-pointer relative">
+                                            <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold border border-white/10">{game.releaseDate && new Date(game.releaseDate) > new Date() ? <span className="text-cyan-400">בטא • {new Date(game.releaseDate).toLocaleDateString('he-IL')}</span> : <span className="text-green-400">שוחרר • {game.releaseDate ? new Date(game.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span>}</div>
+                                            <div className="h-48 bg-black relative overflow-hidden">{game.imageUrl ? <img src={game.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" /> : <div className="w-full h-full flex items-center justify-center bg-[#0d1117]"><Gamepad2 size={40} className="text-slate-800" /></div>}
+                                                <div className="absolute bottom-3 right-3 flex gap-2"><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-fuchsia-400">{game.genre || 'כללי'}</span><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-yellow-400 flex items-center gap-1"><Star size={10} fill="currentColor"/> {game.rating || '-'}</span></div>
                                             </div>
-                                        ))
-                                    )}
+                                            <div className="p-5"><h3 className="font-bold text-lg text-white mb-1 group-hover:text-fuchsia-400 line-clamp-1">{game.title}</h3><div className="flex items-center gap-2 text-xs text-slate-500 mb-3"><UserCircle size={14} /><span>{game.authorName}</span></div><p className="text-slate-400 text-sm line-clamp-2">{game.description}</p></div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* ADD / EDIT */}
-                        {view === 'add' && currentUser && (
-                            <div className="max-w-4xl mx-auto animate-in fade-in zoom-in-95 duration-300">
+                        {view === 'add' && user && (
+                            <div className="max-w-4xl mx-auto animate-in zoom-in-95">
                                 <div className="bg-[#161b2e]/90 backdrop-blur-md rounded-3xl p-8 border border-white/10 shadow-2xl">
-                                    <h2 className="text-3xl font-black mb-8 flex items-center gap-3">{editingId ? <Edit2 className="text-yellow-400" /> : <Plus className="text-green-400" />} {editingId ? 'עריכת מאמר קיים' : 'הוספת מאמר לארכיון'}</h2>
+                                    <h2 className="text-3xl font-black mb-8 flex items-center gap-3">{editingId ? <Edit2 className="text-yellow-400"/> : <Plus className="text-green-400"/>} {editingId ? 'עריכה' : 'הוספה'}</h2>
                                     <form onSubmit={handleSaveGame} className="space-y-6">
                                         <div className="grid md:grid-cols-2 gap-6">
                                             <div><label className="text-xs font-bold text-slate-400 mb-1 block">שם המשחק (חובה)</label><input required type="text" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
-                                            <div><label className="text-xs font-bold text-slate-400 mb-1 block">ז'אנר (אופציונלי)</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                            <div><label className="text-xs font-bold text-slate-400 mb-1 block">ז'אנר</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
                                         </div>
                                         <div className="grid md:grid-cols-3 gap-6">
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">תאריך יציאה (אופציונלי)</label><div className="relative"><Calendar className="absolute right-3 top-3.5 text-slate-500" size={16} /><input type="date" value={gameForm.releaseDate} onChange={e => setGameForm({...gameForm, releaseDate: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 pr-10 text-white focus:border-cyan-500 outline-none" /></div></div>
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">דירוג (אופציונלי)</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-yellow-500 outline-none" /></div>
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">כתובת תמונה (אופציונלי)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">תאריך יציאה</label><input type="date" value={gameForm.releaseDate} onChange={e => setGameForm({...gameForm, releaseDate: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-cyan-500 outline-none" /></div>
+                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">דירוג</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-yellow-500 outline-none" /></div>
+                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">תמונה (URL)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
                                         </div>
-                                        <div><label className="text-xs font-bold text-slate-400 mb-1 block">תוכן המאמר (חובה)</label><textarea required rows="8" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-white focus:border-fuchsia-500 outline-none resize-none" /></div>
+                                        <div><label className="text-xs font-bold text-slate-400 mb-1 block">תוכן (חובה)</label><textarea required rows="8" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-white focus:border-fuchsia-500 outline-none resize-none" /></div>
                                         <div className="pt-4 flex justify-end gap-3">
-                                            <button type="button" onClick={() => setView('library')} className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:text-white hover:bg-white/5">ביטול</button>
-                                            <button type="submit" className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 hover:scale-105 transition-transform"> <Save size={18} /> שמור מאמר</button>
+                                            <button type="button" onClick={() => setView('library')} className="px-6 py-3 rounded-xl text-slate-400 hover:text-white">ביטול</button>
+                                            <button type="submit" className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg">שמור</button>
                                         </div>
                                     </form>
                                 </div>
                             </div>
                         )}
 
-                        {/* DETAIL */}
                         {view === 'detail' && selectedGame && (
-                            <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 max-w-5xl mx-auto">
+                            <div className="animate-in zoom-in-95 max-w-5xl mx-auto">
                                 <div className="relative h-[400px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8 group">
-                                    <div className="absolute top-6 right-6 z-20"><button onClick={() => setView('library')} className="bg-black/40 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/20 border border-white/10"><ArrowRight size={20} /></button></div>
-                                    {currentUser && currentUser.id === selectedGame.authorId && (
+                                    <div className="absolute top-6 right-6 z-20"><button onClick={() => setView('library')} className="bg-black/40 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/20"><ArrowRight size={20} /></button></div>
+                                    {user && user.uid === selectedGame.authorId && (
                                         <div className="absolute top-6 left-6 z-20 flex gap-3">
-                                            <button onClick={() => startEdit(selectedGame)} className="bg-blue-500/20 backdrop-blur-md text-blue-400 p-3 rounded-full hover:bg-blue-500 hover:text-white border border-blue-500/20" title="ערוך"><Edit2 size={20} /></button>
-                                            <button onClick={() => requestDelete(selectedGame.id)} className="bg-red-500/20 backdrop-blur-md text-red-400 p-3 rounded-full hover:bg-red-500 hover:text-white border border-red-500/20" title="מחק"><Trash2 size={20} /></button>
+                                            <button onClick={() => startEdit(selectedGame)} className="bg-blue-500/20 backdrop-blur-md text-blue-400 p-3 rounded-full hover:bg-blue-500"><Edit2 size={20} /></button>
+                                            <button onClick={() => requestDelete(selectedGame.id)} className="bg-red-500/20 backdrop-blur-md text-red-400 p-3 rounded-full hover:bg-red-500"><Trash2 size={20} /></button>
                                         </div>
                                     )}
                                     {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[#161b2e] flex items-center justify-center"><Gamepad2 size={100} className="text-white/5" /></div>}
                                     <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-[#090513]/60 to-transparent"></div>
-                                    <div className="absolute bottom-0 right-0 w-full p-10">
-                                        <div className="flex gap-3 mb-4">
-                                            <span className="px-3 py-1 rounded-lg bg-fuchsia-600 text-white text-xs font-bold uppercase tracking-wider shadow-lg">{selectedGame.genre || 'כללי'}</span>
-                                            <span className="px-3 py-1 rounded-lg bg-black/60 border border-white/10 text-yellow-400 text-xs font-bold flex items-center gap-1"><Star size={12} fill="currentColor"/> {selectedGame.rating || '-'}/10</span>
-                                            {selectedGame.releaseDate && new Date(selectedGame.releaseDate) > new Date() && <span className="px-3 py-1 rounded-lg bg-cyan-900/80 border border-cyan-500/30 text-cyan-400 text-xs font-bold flex items-center gap-1"><FlaskConical size={12} /> גרסת בטא</span>}
-                                        </div>
-                                        <h1 className="text-6xl font-black text-white drop-shadow-2xl mb-2">{selectedGame.title}</h1>
-                                        <div className="flex items-center gap-4 text-sm text-slate-400 mt-2">
-                                            <div className="flex items-center gap-1"><UserCircle size={16} /> <span>{selectedGame.authorName}</span></div>
-                                            <div className="flex items-center gap-1"><Calendar size={16} /> <span>יציאה: {selectedGame.releaseDate ? new Date(selectedGame.releaseDate).toLocaleDateString('he-IL') : 'זמין בספרייה'}</span></div>
-                                        </div>
-                                    </div>
+                                    <div className="absolute bottom-0 right-0 w-full p-10"><h1 className="text-6xl font-black text-white drop-shadow-2xl mb-2">{selectedGame.title}</h1><div className="flex items-center gap-4 text-sm text-slate-400 mt-2"><div className="flex items-center gap-1"><UserCircle size={16} /> <span>{selectedGame.authorName}</span></div><div className="flex items-center gap-1"><Calendar size={16} /> <span>{selectedGame.releaseDate ? new Date(selectedGame.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span></div></div></div>
                                 </div>
-                                <div className="bg-[#161b2e]/60 backdrop-blur-sm rounded-3xl p-10 border border-white/5">
-                                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5"><BookOpen className="text-cyan-400" /><h3 className="text-2xl font-bold text-white">תוכן המאמר</h3></div>
-                                    <p className="text-lg text-slate-300 leading-relaxed font-light whitespace-pre-wrap">{selectedGame.description}</p>
-                                </div>
+                                <div className="bg-[#161b2e]/60 backdrop-blur-sm rounded-3xl p-10 border border-white/5"><div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5"><BookOpen className="text-cyan-400" /><h3 className="text-2xl font-bold text-white">תוכן</h3></div><p className="text-lg text-slate-300 leading-relaxed font-light whitespace-pre-wrap">{selectedGame.description}</p></div>
                             </div>
                         )}
                     </main>
 
-                    {/* MOBILE NAV */}
                     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0f0a1e]/95 backdrop-blur-xl border-t border-white/10 z-50 flex justify-around items-center p-3 pb-safe">
                         <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'library' ? 'text-fuchsia-400' : 'text-slate-500'}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
-                        {currentUser ? (
+                        {user ? (
                             <>
                                 <button onClick={() => setView('add')} className="bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-4 rounded-full shadow-lg -mt-8 border-4 border-[#090513] text-white"><Plus size={24} /></button>
                                 <button onClick={() => setView('user-articles')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'user-articles' ? 'text-cyan-400' : 'text-slate-500'}`}><UserCircle size={24} /><span className="text-[10px] font-bold">שלי</span></button>
