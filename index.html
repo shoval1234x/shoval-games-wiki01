@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- GITHUB PAGES READY - VERSION FINAL -->
+<!-- GITHUB PAGES READY - VERSION WITH SETTINGS & THEMES -->
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -21,15 +21,20 @@
 
     <style>
         body { font-family: 'Assistant', sans-serif; }
+        
+        /* פס גלילה מעוצב */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.3); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(192, 38, 211, 0.8); }
+
+        /* אנימציות */
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
     </style>
 </head>
-<body class="bg-[#090513] text-slate-100 overflow-hidden selection:bg-fuchsia-500 selection:text-white">
+<!-- ה-body מקבל את צבע הרקע הראשוני, אבל ה-React ישלוט עליו בהמשך -->
+<body class="bg-[#090513] text-slate-100 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300">
 
     <div id="root"></div>
 
@@ -40,14 +45,14 @@
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
             User, Info, Home, LayoutGrid, FlaskConical, Library, LogOut, 
             UserCircle, Lock, Mail, Calendar, Edit2, ShieldCheck, AlertTriangle, X, Check,
-            Cloud, CloudOff, WifiOff
+            Cloud, CloudOff, WifiOff, Settings, Moon, Sun, Monitor, Palette
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
-        // --- Firebase Imports (Production Setup) ---
+        // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { 
             getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-            signOut, onAuthStateChanged, updateProfile 
+            signOut, onAuthStateChanged, updateProfile, deleteUser 
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
         import { 
             getFirestore, collection, doc, setDoc, deleteDoc, 
@@ -97,7 +102,12 @@
             // --- STATE ---
             const [user, setUser] = useState(null); 
             
-            // טעינת משחקים (Offline First)
+            // נושא (Theme) - ברירת מחדל 'dark'
+            const [theme, setTheme] = useState(() => {
+                return localStorage.getItem('shoval_theme') || 'dark';
+            });
+
+            // טעינת משחקים ומשתמשים מקומיים
             const [games, setGames] = useState(() => {
                 try { return JSON.parse(localStorage.getItem('shoval_games_data')) || []; } catch (e) { return []; }
             });
@@ -124,6 +134,16 @@
             };
 
             // --- EFFECTS ---
+            
+            // עדכון ערכת הנושא ב-Local Storage
+            useEffect(() => {
+                localStorage.setItem('shoval_theme', theme);
+                // עדכון צבעי ה-body כדי שהרקע מחוץ לאפליקציה יתאים
+                document.body.className = theme === 'dark' 
+                    ? "bg-[#090513] text-slate-100 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300"
+                    : "bg-slate-50 text-slate-900 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300";
+            }, [theme]);
+
             useEffect(() => { localStorage.setItem('shoval_games_data', JSON.stringify(games)); }, [games]);
             useEffect(() => { localStorage.setItem('shoval_users_data', JSON.stringify(localUsers)); }, [localUsers]);
 
@@ -171,7 +191,66 @@
                 return () => unsubscribe();
             }, [isOnline]);
 
+            // --- STYLES HELPER ---
+            // פונקציה שמחזירה מחלקות עיצוב לפי המצב הנוכחי (כהה/בהיר)
+            const getStyles = () => {
+                const isDark = theme === 'dark';
+                return {
+                    bg: isDark ? 'bg-[#090513]' : 'bg-slate-50',
+                    card: isDark ? 'bg-[#161b2e] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xl',
+                    sidebar: isDark ? 'bg-[#0f0a1e]/90 border-white/5' : 'bg-white/90 border-slate-200 shadow-2xl',
+                    input: isDark ? 'bg-black/30 border-white/10 text-white focus:border-fuchsia-500' : 'bg-slate-100 border-slate-300 text-slate-900 focus:border-fuchsia-500',
+                    text: isDark ? 'text-slate-100' : 'text-slate-800',
+                    textMuted: isDark ? 'text-slate-400' : 'text-slate-500',
+                    navActive: isDark ? 'bg-white/10 text-white' : 'bg-fuchsia-100 text-fuchsia-700',
+                    navInactive: isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                };
+            };
+            const s = getStyles();
+
             // --- HANDLERS ---
+            
+            // מחיקת חשבון (פונקציה חדשה)
+            const handleDeleteAccount = async () => {
+                setConfirmModal({
+                    msg: "האם אתה בטוח שברצונך למחוק את החשבון? כל המידע האישי שלך יימחק. פעולה זו היא סופית.",
+                    onConfirm: async () => {
+                        if (auth && auth.currentUser) {
+                            try {
+                                // 1. מחיקת מסמך הפרופיל ב-Firestore (מותר לפי החוקים)
+                                if (db) {
+                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile', 'info'));
+                                }
+                                
+                                // 2. מחיקת המשתמש ממערכת האימות
+                                await deleteUser(auth.currentUser);
+                                
+                                showToast("החשבון נמחק בהצלחה", 'success');
+                                setView('library');
+                                setUser(null);
+                            } catch (err) {
+                                console.error("Account Deletion Error:", err);
+                                if (err.code === 'auth/requires-recent-login') {
+                                    showToast("מטעמי אבטחה, עליך להתחבר מחדש כדי למחוק חשבון", 'error');
+                                    await signOut(auth); // ניתוק יזום כדי שיכנס שוב
+                                } else {
+                                    showToast("שגיאה במחיקת החשבון", 'error');
+                                }
+                            }
+                        } else {
+                            // מחיקת משתמש מקומי
+                            const updatedLocals = localUsers.filter(u => u.uid !== user.uid);
+                            setLocalUsers(updatedLocals);
+                            localStorage.removeItem('shoval_active_user');
+                            setUser(null);
+                            showToast("החשבון המקומי נמחק", 'success');
+                            setView('library');
+                        }
+                        setConfirmModal(null);
+                    }
+                });
+            };
+
             const handleRegister = async (e) => {
                 e.preventDefault();
                 if (auth && isOnline) {
@@ -304,14 +383,21 @@
             const today = new Date(); today.setHours(0,0,0,0);
             const releasedGames = games.filter(g => !g.releaseDate || new Date(g.releaseDate) <= today);
             const betaGames = games.filter(g => g.releaseDate && new Date(g.releaseDate) > today);
-            const filteredList = (view === 'library' ? releasedGames : view === 'beta' ? betaGames : games).filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase()));
-            const pageTitle = view === 'library' ? "Shoval Games Wiki" : view === 'beta' ? "מאמרי בטא" : "כל המאמרים";
+            
+            const filteredList = (
+                view === 'library' ? releasedGames : 
+                view === 'beta' ? betaGames : 
+                games 
+            ).filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            const pageTitle = view === 'library' ? "Shoval Games Wiki" : view === 'beta' ? "מאמרי בטא" : view === 'settings' ? "הגדרות" : "כל המאמרים";
 
             return (
-                <div className="flex h-screen bg-[#090513] text-slate-100 font-sans overflow-hidden selection:bg-fuchsia-500 selection:text-white" dir="rtl">
-                    <div className="fixed inset-0 pointer-events-none z-0">
-                        <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-fuchsia-900/10 rounded-full blur-[120px]"></div>
-                        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-cyan-900/10 rounded-full blur-[120px]"></div>
+                <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-300 ${s.bg} ${s.text}`} dir="rtl">
+                    {/* רקע */}
+                    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+                        <div className={`absolute top-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-fuchsia-900/10' : 'bg-fuchsia-200/40'}`}></div>
+                        <div className={`absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-cyan-900/10' : 'bg-cyan-200/40'}`}></div>
                     </div>
 
                     {toast && (
@@ -323,42 +409,43 @@
 
                     {confirmModal && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                            <div className="bg-[#161b2e] border border-white/10 p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center">
-                                <h3 className="text-xl font-bold text-white mb-4">אישור פעולה</h3>
-                                <p className="text-slate-400 mb-6">{confirmModal.msg}</p>
+                            <div className={`${s.card} p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center border`}>
+                                <h3 className="text-xl font-bold mb-4">אישור פעולה</h3>
+                                <p className={`mb-6 ${s.textMuted}`}>{confirmModal.msg}</p>
                                 <div className="flex gap-3 justify-center">
-                                    <button onClick={() => setConfirmModal(null)} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white">ביטול</button>
-                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold">אשר</button>
+                                    <button onClick={() => setConfirmModal(null)} className={`px-4 py-2 rounded-lg transition ${theme === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-200 hover:bg-slate-300'}`}>ביטול</button>
+                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition">אשר</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <aside className="hidden md:flex w-72 flex-col bg-[#0f0a1e]/90 backdrop-blur-xl border-l border-white/5 h-full relative z-20 shadow-2xl">
+                    <aside className={`hidden md:flex w-72 flex-col backdrop-blur-xl border-l h-full relative z-20 transition-colors duration-300 ${s.sidebar}`}>
                         <div className="p-8 pb-4 cursor-pointer" onClick={() => setView('library')}>
                             <div className="flex items-center gap-3 mb-2">
-                                <div className="bg-black p-2.5 rounded-xl border border-white/10 text-white"><Gamepad2 size={28} /></div>
-                                <div><h1 className="text-lg font-black text-white">Shoval<span className="text-fuchsia-500">Games</span></h1><p className="text-[10px] text-slate-400">ארכיון הגיימינג העולמי</p></div>
+                                <div className={`p-2.5 rounded-xl border ${theme === 'dark' ? 'bg-black border-white/10 text-white' : 'bg-fuchsia-600 border-transparent text-white'}`}><Gamepad2 size={28} /></div>
+                                <div><h1 className="text-lg font-black">Shoval<span className="text-fuchsia-500">Games</span></h1><p className={`text-[10px] ${s.textMuted}`}>ארכיון הגיימינג העולמי</p></div>
                             </div>
                         </div>
                         <nav className="flex-1 px-4 py-4 space-y-2">
-                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'library' ? 'bg-white/10 text-white border-r-4 border-fuchsia-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Library size={20} /><span>הספרייה</span></button>
+                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'library' ? s.navActive : s.navInactive}`}><Library size={20} /><span>הספרייה</span></button>
                             {user && <>
-                                <div className="pt-4 pb-2 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">אזור משתמשים</div>
-                                <button onClick={() => setView('beta')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'beta' ? 'bg-white/10 text-white border-r-4 border-cyan-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><FlaskConical size={20} /><span>מאמרי בטא</span></button>
-                                <button onClick={() => setView('user-articles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'user-articles' ? 'bg-white/10 text-white border-r-4 border-yellow-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><LayoutGrid size={20} /><span>כל המאמרים</span></button>
-                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'add' ? 'bg-white/10 text-white border-r-4 border-green-500' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Plus size={20} /><span>הוסף מאמר</span></button>
+                                <div className={`pt-4 pb-2 px-4 text-[10px] font-bold uppercase tracking-wider ${s.textMuted}`}>אזור משתמשים</div>
+                                <button onClick={() => setView('beta')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'beta' ? s.navActive : s.navInactive}`}><FlaskConical size={20} /><span>מאמרי בטא</span></button>
+                                <button onClick={() => setView('user-articles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'user-articles' ? s.navActive : s.navInactive}`}><LayoutGrid size={20} /><span>כל המאמרים</span></button>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'add' ? s.navActive : s.navInactive}`}><Plus size={20} /><span>הוסף מאמר</span></button>
+                                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'settings' ? s.navActive : s.navInactive}`}><Settings size={20} /><span>הגדרות</span></button>
                             </>}
                         </nav>
-                        <div className="p-4 border-t border-white/5 bg-black/20">
+                        <div className={`p-4 border-t ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
                             {user ? (
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-lg relative group">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-lg text-white relative group">
                                         {user.displayName?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || 'U'}
-                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 border-[#090513] ${isOnline && !user.isLocal ? 'bg-green-500' : 'bg-slate-500'}`}>{isOnline && !user.isLocal ? <Cloud size={10} className="text-white" /> : <WifiOff size={10} className="text-white" />}</div>
+                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 ${theme === 'dark' ? 'border-[#090513]' : 'border-white'} ${isOnline && !user.isLocal ? 'bg-green-500' : 'bg-slate-500'}`}>{isOnline && !user.isLocal ? <Cloud size={10} className="text-white" /> : <WifiOff size={10} className="text-white" />}</div>
                                     </div>
-                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName || user.username}</p><p className="text-[10px] text-slate-400 flex items-center gap-1">{user.isLocal ? 'חשבון מקומי' : (isOnline ? 'מחובר לענן' : 'אופליין')}</p></div>
-                                    <button onClick={requestLogout} className="p-2 text-slate-400 hover:text-red-400"><LogOut size={18} /></button>
+                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName || user.username}</p><p className={`text-[10px] flex items-center gap-1 ${s.textMuted}`}>{user.isLocal ? 'חשבון מקומי' : (isOnline ? 'מחובר לענן' : 'אופליין')}</p></div>
+                                    <button onClick={requestLogout} className={`p-2 ${s.textMuted} hover:text-red-400`}><LogOut size={18} /></button>
                                 </div>
                             ) : (
                                 <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-lg text-white font-bold shadow-lg text-sm">התחברות</button>
@@ -366,41 +453,102 @@
                         </div>
                     </aside>
 
-                    <main className="flex-1 overflow-y-auto relative scroll-smooth bg-black/20 p-4 md:p-10">
+                    <main className="flex-1 overflow-y-auto relative scroll-smooth p-4 md:p-10">
                         <div className="md:hidden flex justify-between items-center mb-6">
                             <h1 className="text-lg font-bold">Shoval<span className="text-fuchsia-500">Games</span></h1>
-                            {user ? <button onClick={requestLogout}><LogOut size={20} /></button> : <button onClick={() => setView('login')} className="text-fuchsia-400 font-bold">התחבר</button>}
+                            <div className="flex gap-4">
+                                {user && <button onClick={() => setView('settings')}><Settings size={20} className={s.text} /></button>}
+                                {user ? <button onClick={requestLogout}><LogOut size={20} className={s.text} /></button> : <button onClick={() => setView('login')} className="text-fuchsia-400 font-bold">התחבר</button>}
+                            </div>
                         </div>
 
+                        {/* --- דף הגדרות חדש --- */}
+                        {view === 'settings' && user && (
+                            <div className="max-w-2xl mx-auto space-y-8 animate-in zoom-in-95">
+                                <h2 className="text-4xl font-black mb-6">הגדרות מערכת</h2>
+                                
+                                {/* הגדרות תצוגה */}
+                                <div className={`${s.card} p-6 rounded-3xl border transition-colors duration-300`}>
+                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Palette className="text-fuchsia-500" /> מראה ותצוגה</h3>
+                                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-black/5">
+                                        <div className="flex items-center gap-3">
+                                            {theme === 'dark' ? <Moon size={24} /> : <Sun size={24} className="text-yellow-500" />}
+                                            <div>
+                                                <div className="font-bold">מצב לילה / יום</div>
+                                                <div className={`text-xs ${s.textMuted}`}>{theme === 'dark' ? 'ערכת נושא כהה פעילה' : 'ערכת נושא בהירה פעילה'}</div>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                            className={`px-4 py-2 rounded-lg font-bold transition-all ${theme === 'dark' ? 'bg-white text-black hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
+                                        >
+                                            שנה למצב {theme === 'dark' ? 'בהיר' : 'כהה'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* קרדיטים */}
+                                <div className={`${s.card} p-6 rounded-3xl border transition-colors duration-300`}>
+                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Monitor className="text-cyan-500" /> אודות המערכת</h3>
+                                    <div className="space-y-4 text-sm">
+                                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                                            <span className={s.textMuted}>כתיבת קוד ופיתוח</span>
+                                            <span className="font-bold">Gemini AI</span>
+                                        </div>
+                                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                                            <span className={s.textMuted}>רעיונות ואפיון</span>
+                                            <span className="font-bold">Shoval Kaufman</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-2">
+                                            <span className={s.textMuted}>מערכת הפעלה</span>
+                                            <span className="font-bold text-fuchsia-500" style={{direction: 'ltr'}}>Powered by Shoval OS</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* אזור סכנה - מחיקת חשבון */}
+                                <div className={`${s.card} p-6 rounded-3xl border border-red-500/30 bg-red-500/5`}>
+                                    <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 /> אזור סכנה</h3>
+                                    <p className={`text-sm ${s.textMuted} mb-4`}>מחיקת החשבון היא פעולה בלתי הפיכה. כל המידע האישי שלך יימחק לצמיתות.</p>
+                                    <button 
+                                        onClick={handleDeleteAccount}
+                                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg transition-colors"
+                                    >
+                                        מחק את החשבון שלי
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {(view === 'login' || view === 'register') && (
-                            <div className="max-w-md mx-auto mt-10 p-8 bg-[#161b2e] rounded-3xl border border-white/10 shadow-2xl animate-in zoom-in-95">
+                            <div className={`max-w-md mx-auto mt-10 p-8 rounded-3xl border shadow-2xl animate-in zoom-in-95 ${s.card}`}>
                                 <h2 className="text-2xl font-black mb-2 text-center">{view === 'login' ? 'כניסה למערכת' : 'הרשמה חדשה'}</h2>
-                                <p className="text-center text-slate-400 text-xs mb-6 flex items-center justify-center gap-1">{isOnline ? <span className="text-green-400 flex gap-1 items-center"><Cloud size={14}/> מצב אונליין</span> : <span className="text-yellow-400 flex gap-1 items-center"><WifiOff size={14}/> מצב אופליין</span>}</p>
+                                <p className={`text-center text-xs mb-6 flex items-center justify-center gap-1 ${s.textMuted}`}>{isOnline ? <span className="text-green-400 flex gap-1 items-center"><Cloud size={14}/> מצב אונליין</span> : <span className="text-yellow-400 flex gap-1 items-center"><WifiOff size={14}/> מצב אופליין</span>}</p>
                                 <form onSubmit={view === 'login' ? handleLogin : handleRegister} className="space-y-4">
-                                    {view === 'register' && <div><label className="text-xs text-slate-400 font-bold">שם משתמש</label><input required type="text" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>}
-                                    <div><label className="text-xs text-slate-400 font-bold">אימייל</label><input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>
-                                    <div><label className="text-xs text-slate-400 font-bold">סיסמה {view === 'register' && "(מינימום 6 תווים)"}</label><input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                    {view === 'register' && <div><label className={`text-xs font-bold ${s.textMuted}`}>שם משתמש</label><input required type="text" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>}
+                                    <div><label className={`text-xs font-bold ${s.textMuted}`}>אימייל</label><input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>
+                                    <div><label className={`text-xs font-bold ${s.textMuted}`}>סיסמה {view === 'register' && "(מינימום 6 תווים)"}</label><input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>
                                     <button type="submit" className="w-full py-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-xl font-bold text-white shadow-lg mt-4">{view === 'login' ? 'היכנס' : 'הירשם'}</button>
                                 </form>
-                                <div className="text-center mt-4 text-sm"><button onClick={() => setView(view === 'login' ? 'register' : 'login')} className="text-slate-400 underline hover:text-white">{view === 'login' ? 'אין חשבון? הירשם' : 'יש חשבון? התחבר'}</button></div>
-                                <div className="text-center mt-4"><button onClick={() => setView('library')} className="text-xs text-slate-500 hover:text-white">המשך כאורח</button></div>
+                                <div className="text-center mt-4 text-sm"><button onClick={() => setView(view === 'login' ? 'register' : 'login')} className={`underline ${s.textMuted}`}>{view === 'login' ? 'אין חשבון? הירשם' : 'יש חשבון? התחבר'}</button></div>
+                                <div className="text-center mt-4"><button onClick={() => setView('library')} className={`text-xs ${s.textMuted}`}>המשך כאורח</button></div>
                             </div>
                         )}
 
                         {(view === 'library' || view === 'beta' || view === 'user-articles') && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-                                <div className="flex flex-col md:flex-row gap-6 justify-between items-start md:items-end border-b border-white/5 pb-6">
-                                    <div><h2 className="text-4xl font-black text-white mb-2">{pageTitle}</h2><p className="text-slate-400">ברוכים הבאים לארכיון העולמי של משחקי הוידאו</p></div>
-                                    <div className="relative w-full md:w-96"><Search className="absolute right-4 top-3.5 text-slate-400" size={20} /><input type="text" placeholder="חיפוש..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-[#161b2e] border border-white/10 rounded-xl py-3 pr-12 pl-4 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                <div className={`flex flex-col md:flex-row gap-6 justify-between items-start md:items-end border-b pb-6 ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+                                    <div><h2 className="text-4xl font-black mb-2">{pageTitle}</h2><p className={s.textMuted}>ברוכים הבאים לארכיון העולמי של משחקי הוידאו</p></div>
+                                    <div className="relative w-full md:w-96"><Search className={`absolute right-4 top-3.5 ${s.textMuted}`} size={20} /><input type="text" placeholder="חיפוש..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full rounded-xl py-3 pr-12 pl-4 outline-none ${s.input}`} /></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                     {filteredList.map(game => (
-                                        <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className="group bg-[#161b2e] rounded-2xl overflow-hidden border border-white/5 hover:border-fuchsia-500/30 hover:shadow-xl transition-all cursor-pointer relative">
-                                            <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold border border-white/10">{game.releaseDate && new Date(game.releaseDate) > new Date() ? <span className="text-cyan-400">בטא • {new Date(game.releaseDate).toLocaleDateString('he-IL')}</span> : <span className="text-green-400">שוחרר • {game.releaseDate ? new Date(game.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span>}</div>
+                                        <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all cursor-pointer relative ${s.card} hover:border-fuchsia-500/30 hover:shadow-2xl`}>
+                                            <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold border border-white/10 text-white">{game.releaseDate && new Date(game.releaseDate) > new Date() ? <span className="text-cyan-400">בטא • {new Date(game.releaseDate).toLocaleDateString('he-IL')}</span> : <span className="text-green-400">שוחרר • {game.releaseDate ? new Date(game.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span>}</div>
                                             <div className="h-48 bg-black relative overflow-hidden">{game.imageUrl ? <img src={game.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" /> : <div className="w-full h-full flex items-center justify-center bg-[#0d1117]"><Gamepad2 size={40} className="text-slate-800" /></div>}
                                                 <div className="absolute bottom-3 right-3 flex gap-2"><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-fuchsia-400">{game.genre || 'כללי'}</span><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-yellow-400 flex items-center gap-1"><Star size={10} fill="currentColor"/> {game.rating || '-'}</span></div>
                                             </div>
-                                            <div className="p-5"><h3 className="font-bold text-lg text-white mb-1 group-hover:text-fuchsia-400 line-clamp-1">{game.title}</h3><div className="flex items-center gap-2 text-xs text-slate-500 mb-3"><UserCircle size={14} /><span>{game.authorName}</span></div><p className="text-slate-400 text-sm line-clamp-2">{game.description}</p></div>
+                                            <div className="p-5"><h3 className="font-bold text-lg mb-1 group-hover:text-fuchsia-400 line-clamp-1">{game.title}</h3><div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div><p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p></div>
                                         </div>
                                     ))}
                                 </div>
@@ -409,21 +557,21 @@
 
                         {view === 'add' && user && (
                             <div className="max-w-4xl mx-auto animate-in zoom-in-95">
-                                <div className="bg-[#161b2e]/90 backdrop-blur-md rounded-3xl p-8 border border-white/10 shadow-2xl">
+                                <div className={`rounded-3xl p-8 border shadow-2xl ${s.card}`}>
                                     <h2 className="text-3xl font-black mb-8 flex items-center gap-3">{editingId ? <Edit2 className="text-yellow-400"/> : <Plus className="text-green-400"/>} {editingId ? 'עריכה' : 'הוספה'}</h2>
                                     <form onSubmit={handleSaveGame} className="space-y-6">
                                         <div className="grid md:grid-cols-2 gap-6">
-                                            <div><label className="text-xs font-bold text-slate-400 mb-1 block">שם המשחק (חובה)</label><input required type="text" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
-                                            <div><label className="text-xs font-bold text-slate-400 mb-1 block">ז'אנר</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                            <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>שם המשחק (חובה)</label><input required type="text" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
+                                            <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>ז'אנר</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
                                         </div>
                                         <div className="grid md:grid-cols-3 gap-6">
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">תאריך יציאה</label><input type="date" value={gameForm.releaseDate} onChange={e => setGameForm({...gameForm, releaseDate: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-cyan-500 outline-none" /></div>
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">דירוג</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-yellow-500 outline-none" /></div>
-                                            <div className="col-span-1"><label className="text-xs font-bold text-slate-400 mb-1 block">תמונה (URL)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-3.5 text-white focus:border-fuchsia-500 outline-none" /></div>
+                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תאריך יציאה</label><input type="date" value={gameForm.releaseDate} onChange={e => setGameForm({...gameForm, releaseDate: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
+                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>דירוג</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
+                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תמונה (URL)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
                                         </div>
-                                        <div><label className="text-xs font-bold text-slate-400 mb-1 block">תוכן (חובה)</label><textarea required rows="8" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-white focus:border-fuchsia-500 outline-none resize-none" /></div>
+                                        <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תוכן (חובה)</label><textarea required rows="8" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full rounded-xl p-4 outline-none resize-none ${s.input}`} /></div>
                                         <div className="pt-4 flex justify-end gap-3">
-                                            <button type="button" onClick={() => setView('library')} className="px-6 py-3 rounded-xl text-slate-400 hover:text-white">ביטול</button>
+                                            <button type="button" onClick={() => setView('library')} className={`px-6 py-3 rounded-xl hover:opacity-80 ${s.textMuted}`}>ביטול</button>
                                             <button type="submit" className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg">שמור</button>
                                         </div>
                                     </form>
@@ -443,19 +591,19 @@
                                     )}
                                     {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[#161b2e] flex items-center justify-center"><Gamepad2 size={100} className="text-white/5" /></div>}
                                     <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-[#090513]/60 to-transparent"></div>
-                                    <div className="absolute bottom-0 right-0 w-full p-10"><h1 className="text-6xl font-black text-white drop-shadow-2xl mb-2">{selectedGame.title}</h1><div className="flex items-center gap-4 text-sm text-slate-400 mt-2"><div className="flex items-center gap-1"><UserCircle size={16} /> <span>{selectedGame.authorName}</span></div><div className="flex items-center gap-1"><Calendar size={16} /> <span>{selectedGame.releaseDate ? new Date(selectedGame.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span></div></div></div>
+                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white"><h1 className="text-6xl font-black drop-shadow-2xl mb-2">{selectedGame.title}</h1><div className="flex items-center gap-4 text-sm text-slate-300 mt-2"><div className="flex items-center gap-1"><UserCircle size={16} /> <span>{selectedGame.authorName}</span></div><div className="flex items-center gap-1"><Calendar size={16} /> <span>{selectedGame.releaseDate ? new Date(selectedGame.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span></div></div></div>
                                 </div>
-                                <div className="bg-[#161b2e]/60 backdrop-blur-sm rounded-3xl p-10 border border-white/5"><div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5"><BookOpen className="text-cyan-400" /><h3 className="text-2xl font-bold text-white">תוכן</h3></div><p className="text-lg text-slate-300 leading-relaxed font-light whitespace-pre-wrap">{selectedGame.description}</p></div>
+                                <div className={`rounded-3xl p-10 border shadow-lg ${s.card}`}><div className={`flex items-center gap-3 mb-6 pb-4 border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}><BookOpen className="text-cyan-400" /><h3 className="text-2xl font-bold">תוכן</h3></div><p className={`text-lg leading-relaxed font-light whitespace-pre-wrap ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{selectedGame.description}</p></div>
                             </div>
                         )}
                     </main>
 
-                    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0f0a1e]/95 backdrop-blur-xl border-t border-white/10 z-50 flex justify-around items-center p-3 pb-safe">
-                        <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'library' ? 'text-fuchsia-400' : 'text-slate-500'}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
+                    <nav className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl border-t z-50 flex justify-around items-center p-3 pb-safe transition-colors duration-300" style={{backgroundColor: theme === 'dark' ? 'rgba(15, 10, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}}>
+                        <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'library' ? 'text-fuchsia-400' : s.textMuted}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
                         {user ? (
                             <>
                                 <button onClick={() => setView('add')} className="bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-4 rounded-full shadow-lg -mt-8 border-4 border-[#090513] text-white"><Plus size={24} /></button>
-                                <button onClick={() => setView('user-articles')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'user-articles' ? 'text-cyan-400' : 'text-slate-500'}`}><UserCircle size={24} /><span className="text-[10px] font-bold">שלי</span></button>
+                                <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'settings' ? 'text-cyan-400' : s.textMuted}`}><Settings size={24} /><span className="text-[10px] font-bold">הגדרות</span></button>
                             </>
                         ) : (
                             <button onClick={() => setView('login')} className="flex flex-col items-center gap-1 p-2 rounded-xl text-slate-500"><User size={24} /><span className="text-[10px] font-bold">התחבר</span></button>
