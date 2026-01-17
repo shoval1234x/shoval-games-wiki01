@@ -1,54 +1,55 @@
 <!DOCTYPE html>
-<!-- GITHUB PAGES READY - VERSION WITH SETTINGS & THEMES -->
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shoval Games Wiki - הארכיון העולמי</title>
     
-    <!-- טעינת Tailwind CSS לעיצוב -->
+    <!-- External Dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- טעינת React ו-ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- טעינת Babel לתרגום הקוד בדפדפן -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- פונט (Assistant לעברית) -->
     <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200;300;400;600;700;800&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Assistant', sans-serif; }
+        body { 
+            font-family: 'Assistant', sans-serif; 
+            margin: 0;
+            padding: 0;
+        }
         
-        /* פס גלילה מעוצב */
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        /* Custom Scrollbar for modern look */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.3); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(192, 38, 211, 0.8); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(192, 38, 211, 0.5); }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
 
-        /* אנימציות */
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .animate-in { animation: fadeIn 0.3s ease-out forwards; }
+        /* Smooth transitions for theme switching */
+        .transition-theme { transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease; }
     </style>
 </head>
-<!-- ה-body מקבל את צבע הרקע הראשוני, אבל ה-React ישלוט עליו בהמשך -->
-<body class="bg-[#090513] text-slate-100 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300">
+<body class="overflow-hidden selection:bg-fuchsia-500 selection:text-white">
 
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef } from "https://esm.sh/react@18.2.0";
+        /**
+         * Shoval Games Wiki - Main Application Logic
+         * Features: Firebase Auth, Firestore Sync, Offline Support (Persistence), Dark/Light Mode
+         */
+        import React, { useState, useEffect } from "https://esm.sh/react@18.2.0";
         import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
         import { 
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
-            User, Info, Home, LayoutGrid, FlaskConical, Library, LogOut, 
-            UserCircle, Lock, Mail, Calendar, Edit2, ShieldCheck, AlertTriangle, X, Check,
-            Cloud, CloudOff, WifiOff, Settings, Moon, Sun, Monitor, Palette
+            User, Info, Home, LayoutGrid, Library, LogOut, 
+            UserCircle, Lock, Mail, Edit2, AlertTriangle, X, Check,
+            Cloud, WifiOff, Settings, Moon, Sun, Palette
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
-        // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { 
             getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
@@ -56,10 +57,10 @@
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
         import { 
             getFirestore, collection, doc, setDoc, deleteDoc, 
-            onSnapshot, query, orderBy, serverTimestamp 
+            onSnapshot, query, orderBy, serverTimestamp, enableIndexedDbPersistence 
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-        // --- הגדרות Firebase שלך (מוטמעות) ---
+        // --- Firebase Configuration ---
         const firebaseConfig = {
             apiKey: "AIzaSyCDJsjBKWVdMs7vsHmjKi-cbAMy-Huxfgs",
             authDomain: "shoval-games-wiki-7ff87.firebaseapp.com",
@@ -69,84 +70,52 @@
             appId: "1:1013671724448:web:84c0a3ee694cdc1ef850c5"
         };
 
-        // משתנים גלובליים
-        let app = null;
-        let auth = null;
-        let db = null;
-        const appId = "shoval-games-wiki-7ff87";
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // App ID consistent with cloud rules
+        const appId = "shoval-games-wiki-v2"; 
 
-        try {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            console.log("Firebase initialized successfully (Production Mode)");
-        } catch (e) {
-            console.error("Firebase Init Error:", e);
-        }
+        // --- Enable Offline Persistence ---
+        enableIndexedDbPersistence(db).catch((err) => {
+            if (err.code == 'failed-precondition') {
+                console.warn("Persistence failed: Multiple tabs open.");
+            } else if (err.code == 'unimplemented') {
+                console.warn("Persistence failed: Browser not supported.");
+            }
+        });
 
-        // --- Utils ---
-        const sanitizeInput = (str) => {
-            if (typeof str !== 'string') return str;
-            return str.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        };
-
-        const hashPassword = async (password) => {
-            const msgBuffer = new TextEncoder().encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        };
-
-        // --- App Component ---
         function App() {
-            // --- STATE ---
+            // State Management
             const [user, setUser] = useState(null); 
-            
-            // נושא (Theme) - ברירת מחדל 'dark'
-            const [theme, setTheme] = useState(() => {
-                return localStorage.getItem('shoval_theme') || 'dark';
-            });
-
-            // טעינת משחקים ומשתמשים מקומיים
-            const [games, setGames] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('shoval_games_data')) || []; } catch (e) { return []; }
-            });
-            const [localUsers, setLocalUsers] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('shoval_users_data')) || []; } catch (e) { return []; }
-            });
-
+            const [theme, setTheme] = useState(() => localStorage.getItem('shoval_theme') || 'dark');
+            const [games, setGames] = useState([]);
             const [isOnline, setIsOnline] = useState(navigator.onLine);
             const [view, setView] = useState('library'); 
             const [selectedGame, setSelectedGame] = useState(null);
             const [searchTerm, setSearchTerm] = useState('');
             const [editingId, setEditingId] = useState(null); 
-
-            const [gameForm, setGameForm] = useState({
-                title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' 
-            });
+            const [gameForm, setGameForm] = useState({ title: '', genre: '', rating: 5, description: '', imageUrl: '' });
             const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
             const [toast, setToast] = useState(null); 
             const [confirmModal, setConfirmModal] = useState(null); 
 
-            const showToast = (msg, type = 'error') => {
+            // Toast helper
+            const showToast = (msg, type = 'success') => {
                 setToast({ msg, type });
-                setTimeout(() => setToast(null), 5000);
+                setTimeout(() => setToast(null), 4000);
             };
 
-            // --- EFFECTS ---
-            
-            // עדכון ערכת הנושא ב-Local Storage
+            // Theme Management
             useEffect(() => {
                 localStorage.setItem('shoval_theme', theme);
-                // עדכון צבעי ה-body כדי שהרקע מחוץ לאפליקציה יתאים
                 document.body.className = theme === 'dark' 
-                    ? "bg-[#090513] text-slate-100 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300"
-                    : "bg-slate-50 text-slate-900 overflow-hidden selection:bg-fuchsia-500 selection:text-white transition-colors duration-300";
+                    ? "bg-[#090513] text-slate-100 overflow-hidden transition-theme"
+                    : "bg-slate-50 text-slate-900 overflow-hidden transition-theme";
             }, [theme]);
 
-            useEffect(() => { localStorage.setItem('shoval_games_data', JSON.stringify(games)); }, [games]);
-            useEffect(() => { localStorage.setItem('shoval_users_data', JSON.stringify(localUsers)); }, [localUsers]);
-
+            // Connectivity Monitor
             useEffect(() => {
                 const handleStatusChange = () => setIsOnline(navigator.onLine);
                 window.addEventListener('online', handleStatusChange);
@@ -157,42 +126,34 @@
                 };
             }, []);
 
+            // Auth Listener
             useEffect(() => {
-                if (!auth) {
-                    const localActive = localStorage.getItem('shoval_active_user');
-                    if (localActive) setUser(JSON.parse(localActive));
-                    return;
-                }
-                const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    if (u) {
-                        setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email, isLocal: false });
-                    } else {
-                        setUser(null);
-                    }
+                return onAuthStateChanged(auth, (u) => {
+                    if (u) setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email });
+                    else setUser(null);
+                });
+            }, []);
+
+            // Real-time Data Sync
+            useEffect(() => {
+                const q = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'games'), 
+                    orderBy('createdAt', 'desc')
+                );
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const serverGames = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString()
+                    }));
+                    setGames(serverGames);
+                }, (err) => {
+                    console.error("Firestore Error:", err);
                 });
                 return () => unsubscribe();
             }, []);
 
-            useEffect(() => {
-                if (!db || !isOnline) return;
-                const gamesRef = collection(db, 'artifacts', appId, 'public', 'data', 'games');
-                const unsubscribe = onSnapshot(gamesRef, (snapshot) => {
-                    const serverGames = snapshot.docs.map(doc => {
-                        const d = doc.data();
-                        return {
-                            id: doc.id,
-                            ...d,
-                            createdAt: d.createdAt?.toDate ? d.createdAt.toDate().toISOString() : (d.createdAt || new Date().toISOString())
-                        };
-                    });
-                    serverGames.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-                    setGames(serverGames);
-                }, (err) => console.warn("Cloud sync paused:", err));
-                return () => unsubscribe();
-            }, [isOnline]);
-
-            // --- STYLES HELPER ---
-            // פונקציה שמחזירה מחלקות עיצוב לפי המצב הנוכחי (כהה/בהיר)
+            // Dynamic Styles based on theme
             const getStyles = () => {
                 const isDark = theme === 'dark';
                 return {
@@ -208,405 +169,288 @@
             };
             const s = getStyles();
 
-            // --- HANDLERS ---
-            
-            // מחיקת חשבון (פונקציה חדשה)
-            const handleDeleteAccount = async () => {
-                setConfirmModal({
-                    msg: "האם אתה בטוח שברצונך למחוק את החשבון? כל המידע האישי שלך יימחק. פעולה זו היא סופית.",
-                    onConfirm: async () => {
-                        if (auth && auth.currentUser) {
-                            try {
-                                // 1. מחיקת מסמך הפרופיל ב-Firestore (מותר לפי החוקים)
-                                if (db) {
-                                    await deleteDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile', 'info'));
-                                }
-                                
-                                // 2. מחיקת המשתמש ממערכת האימות
-                                await deleteUser(auth.currentUser);
-                                
-                                showToast("החשבון נמחק בהצלחה", 'success');
-                                setView('library');
-                                setUser(null);
-                            } catch (err) {
-                                console.error("Account Deletion Error:", err);
-                                if (err.code === 'auth/requires-recent-login') {
-                                    showToast("מטעמי אבטחה, עליך להתחבר מחדש כדי למחוק חשבון", 'error');
-                                    await signOut(auth); // ניתוק יזום כדי שיכנס שוב
-                                } else {
-                                    showToast("שגיאה במחיקת החשבון", 'error');
-                                }
-                            }
-                        } else {
-                            // מחיקת משתמש מקומי
-                            const updatedLocals = localUsers.filter(u => u.uid !== user.uid);
-                            setLocalUsers(updatedLocals);
-                            localStorage.removeItem('shoval_active_user');
-                            setUser(null);
-                            showToast("החשבון המקומי נמחק", 'success');
-                            setView('library');
-                        }
-                        setConfirmModal(null);
-                    }
-                });
-            };
-
-            const handleRegister = async (e) => {
+            // Authentication Handlers
+            const handleAuth = async (e) => {
                 e.preventDefault();
-                if (auth && isOnline) {
-                    try {
-                        const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
-                        await updateProfile(cred.user, { displayName: authForm.username });
-                        if (db) {
-                            await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), {
-                                username: authForm.username, email: authForm.email, createdAt: serverTimestamp()
-                            });
-                        }
-                        showToast(`נרשמת בהצלחה לענן!`, 'success');
-                    } catch (err) {
-                        console.error("Registration Error:", err);
-                        let msg = "שגיאת ענן: " + err.code;
-                        if (err.code === 'auth/email-already-in-use') msg = "המייל תפוס";
-                        if (err.code === 'auth/weak-password') msg = "סיסמה חלשה (מינימום 6 תווים)";
-                        if (err.code === 'auth/operation-not-allowed') msg = "שגיאה: יש להפעיל Email/Password במסוף Firebase!";
-                        showToast(msg, 'error');
-                    }
-                } else {
-                    if (localUsers.some(u => u.username === authForm.username)) { showToast("שם משתמש תפוס (מקומי)", 'error'); return; }
-                    const hashedPassword = await hashPassword(authForm.password);
-                    const newUser = { uid: 'local_' + Date.now(), username: authForm.username, email: authForm.email, passwordHash: hashedPassword, isLocal: true };
-                    setLocalUsers([...localUsers, newUser]);
-                    setUser(newUser);
-                    localStorage.setItem('shoval_active_user', JSON.stringify(newUser));
-                    showToast("נרשמת מקומית (אופליין)", 'success');
-                }
-                if (!auth || !isOnline || user) { setView('library'); setAuthForm({ username: '', email: '', password: '' }); }
-            };
-
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                if (auth && isOnline) {
-                    try {
+                try {
+                    if (view === 'login') {
                         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
-                        showToast("מחובר לענן", 'success');
-                        setView('library');
-                        setAuthForm({ username: '', email: '', password: '' });
-                        return;
-                    } catch (err) {
-                        console.log("Cloud login failed, checking local...", err);
+                    } else {
+                        if (authForm.password.length < 6) throw { code: 'weak-password' };
+                        const c = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
+                        await updateProfile(c.user, { displayName: authForm.username });
                     }
+                    setView('library'); 
+                    showToast("התחברת בהצלחה!");
+                } catch (err) {
+                    let errorMsg = "שגיאה בפרטים";
+                    if (err.code === 'auth/email-already-in-use') errorMsg = "האימייל כבר קיים במערכת";
+                    if (err.code === 'auth/weak-password') errorMsg = "הסיסמה חייבת להיות לפחות 6 תווים";
+                    showToast(errorMsg, "error");
                 }
-                const localUser = localUsers.find(u => u.username === authForm.username || u.email === authForm.email);
-                if (localUser) {
-                    const inputHash = await hashPassword(authForm.password);
-                    if (localUser.passwordHash === inputHash) {
-                        setUser(localUser);
-                        localStorage.setItem('shoval_active_user', JSON.stringify(localUser));
-                        showToast("מחובר מקומית", 'success');
-                        setView('library');
-                        setAuthForm({ username: '', email: '', password: '' });
-                        return;
-                    }
-                }
-                showToast("פרטי התחברות שגויים", 'error');
             };
 
-            const requestLogout = () => {
-                setConfirmModal({
-                    msg: "האם להתנתק?",
-                    onConfirm: async () => {
-                        if (auth) await signOut(auth);
-                        setUser(null);
-                        localStorage.removeItem('shoval_active_user');
-                        setView('library');
-                        showToast("התנתקת", 'success');
-                        setConfirmModal(null);
-                    }
-                });
-            };
-
+            // CRUD Handlers
             const handleSaveGame = async (e) => {
                 e.preventDefault();
-                if (!user) return;
-                const gameId = editingId || (user.isLocal ? 'local_game_' : '') + Date.now().toString();
-                const newGame = {
-                    id: gameId, ...gameForm, authorId: user.uid, authorName: user.displayName || user.username || 'Anonymous',
-                    updatedAt: new Date().toISOString(),
-                    createdAt: editingId ? (games.find(g=>g.id===editingId)?.createdAt || new Date().toISOString()) : new Date().toISOString()
+                if (!user) return showToast("התחבר כדי לשמור", "error");
+                const gameId = editingId || Date.now().toString();
+                const payload = {
+                    ...gameForm,
+                    authorId: user.uid,
+                    authorName: user.displayName,
+                    updatedAt: serverTimestamp(),
+                    createdAt: editingId ? games.find(g=>g.id===editingId).createdAt : serverTimestamp()
                 };
-
-                let updatedList = editingId ? games.map(g => g.id === editingId ? newGame : g) : [newGame, ...games];
-                setGames(updatedList);
-
-                if (db && isOnline && !user.isLocal) {
-                    try {
-                        const payload = JSON.parse(JSON.stringify(newGame));
-                        if(!editingId) payload.createdAt = serverTimestamp();
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), payload);
-                        showToast("נשמר וסונכרן לענן!", 'success');
-                    } catch (err) {
-                        console.error("Cloud save failed", err);
-                        showToast("נשמר מקומית בלבד", 'error');
-                    }
-                } else { showToast("נשמר מקומית", 'success'); }
-                
-                setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' });
-                setEditingId(null);
-                setView((newGame.releaseDate && new Date(newGame.releaseDate) > new Date()) ? 'beta' : 'library');
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), payload);
+                    showToast("המאמר נשמר!");
+                    setEditingId(null);
+                    setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' });
+                    setView('library');
+                } catch (err) { showToast("שגיאה בשמירה", "error"); }
             };
 
-            const requestDelete = (gameId) => {
-                const gameToDelete = games.find(g => g.id === gameId);
-                if (gameToDelete && gameToDelete.authorId !== user?.uid) { showToast("אין לך הרשאה למחוק", 'error'); return; }
+            const handleDeleteAccount = async () => {
+                if (!auth.currentUser) return;
                 setConfirmModal({
-                    msg: "למחוק את המאמר לצמיתות?",
+                    msg: "מחיקת חשבון היא לצמיתות. כל המידע שלך ימחק. להמשיך?",
                     onConfirm: async () => {
-                        setGames(games.filter(g => g.id !== gameId));
-                        if (selectedGame?.id === gameId) setView('library');
-                        if (db && isOnline && !user.isLocal && !gameId.startsWith('local_')) {
-                            try {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId));
-                                showToast("נמחק מהענן ומקומית", 'success');
-                            } catch (err) { showToast("נמחק מקומית בלבד", 'error'); }
-                        } else { showToast("נמחק מקומית", 'success'); }
+                        try {
+                            await deleteUser(auth.currentUser);
+                            setUser(null);
+                            setView('library');
+                            showToast("החשבון נמחק");
+                        } catch (e) { showToast("עליך להתחבר מחדש כדי למחוק חשבון", "error"); }
                         setConfirmModal(null);
                     }
                 });
             };
 
-            const startEdit = (game) => {
-                if (game.authorId !== user?.uid) { showToast("אין לך הרשאה לערוך", 'error'); return; }
-                setGameForm(game); setEditingId(game.id); setView('add');
-            };
-
-            // --- RENDER UI ---
-            const today = new Date(); today.setHours(0,0,0,0);
-            const releasedGames = games.filter(g => !g.releaseDate || new Date(g.releaseDate) <= today);
-            const betaGames = games.filter(g => g.releaseDate && new Date(g.releaseDate) > today);
-            
-            const filteredList = (
-                view === 'library' ? releasedGames : 
-                view === 'beta' ? betaGames : 
-                games 
-            ).filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase()));
-
-            const pageTitle = view === 'library' ? "Shoval Games Wiki" : view === 'beta' ? "מאמרי בטא" : view === 'settings' ? "הגדרות" : "כל המאמרים";
-
             return (
-                <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-300 ${s.bg} ${s.text}`} dir="rtl">
-                    {/* רקע */}
+                <div className={`flex h-screen font-sans overflow-hidden transition-theme ${s.bg} ${s.text}`} dir="rtl">
+                    
+                    {/* Background Decorative Blobs */}
                     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
                         <div className={`absolute top-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-fuchsia-900/10' : 'bg-fuchsia-200/40'}`}></div>
                         <div className={`absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-cyan-900/10' : 'bg-cyan-200/40'}`}></div>
                     </div>
 
+                    {/* Toast Notification */}
                     {toast && (
-                        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in ${toast.type === 'error' ? 'bg-red-500' : 'bg-fuchsia-600'} text-white`}>
                             {toast.type === 'error' ? <AlertTriangle size={18} /> : <Check size={18} />}
                             <span className="font-bold text-sm">{toast.msg}</span>
                         </div>
                     )}
 
+                    {/* Confirmation Modal */}
                     {confirmModal && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in">
                             <div className={`${s.card} p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center border`}>
                                 <h3 className="text-xl font-bold mb-4">אישור פעולה</h3>
                                 <p className={`mb-6 ${s.textMuted}`}>{confirmModal.msg}</p>
                                 <div className="flex gap-3 justify-center">
-                                    <button onClick={() => setConfirmModal(null)} className={`px-4 py-2 rounded-lg transition ${theme === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-200 hover:bg-slate-300'}`}>ביטול</button>
-                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition">אשר</button>
+                                    <button onClick={() => setConfirmModal(null)} className={`px-4 py-2 rounded-lg ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-200'}`}>ביטול</button>
+                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white font-bold">אשר</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <aside className={`hidden md:flex w-72 flex-col backdrop-blur-xl border-l h-full relative z-20 transition-colors duration-300 ${s.sidebar}`}>
-                        <div className="p-8 pb-4 cursor-pointer" onClick={() => setView('library')}>
+                    {/* Desktop Sidebar */}
+                    <aside className={`hidden md:flex w-72 flex-col backdrop-blur-xl border-l h-full relative z-20 ${s.sidebar}`}>
+                        <div className="p-8 pb-4 cursor-pointer flex-shrink-0" onClick={() => setView('library')}>
                             <div className="flex items-center gap-3 mb-2">
                                 <div className={`p-2.5 rounded-xl border ${theme === 'dark' ? 'bg-black border-white/10 text-white' : 'bg-fuchsia-600 border-transparent text-white'}`}><Gamepad2 size={28} /></div>
-                                <div><h1 className="text-lg font-black">Shoval<span className="text-fuchsia-500">Games</span></h1><p className={`text-[10px] ${s.textMuted}`}>ארכיון הגיימינג העולמי</p></div>
+                                <div><h1 className="text-lg font-black">Shoval<span className="text-fuchsia-500">Games</span></h1><p className={`text-[10px] ${s.textMuted}`}>ארכיון המשחקים</p></div>
                             </div>
                         </div>
-                        <nav className="flex-1 px-4 py-4 space-y-2">
-                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'library' ? s.navActive : s.navInactive}`}><Library size={20} /><span>הספרייה</span></button>
+                        
+                        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
+                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'library' ? s.navActive : s.navInactive}`}><Library size={20} /><span>הספרייה</span></button>
                             {user && <>
-                                <div className={`pt-4 pb-2 px-4 text-[10px] font-bold uppercase tracking-wider ${s.textMuted}`}>אזור משתמשים</div>
-                                <button onClick={() => setView('beta')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'beta' ? s.navActive : s.navInactive}`}><FlaskConical size={20} /><span>מאמרי בטא</span></button>
-                                <button onClick={() => setView('user-articles')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'user-articles' ? s.navActive : s.navInactive}`}><LayoutGrid size={20} /><span>כל המאמרים</span></button>
-                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '', releaseDate: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'add' ? s.navActive : s.navInactive}`}><Plus size={20} /><span>הוסף מאמר</span></button>
-                                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${view === 'settings' ? s.navActive : s.navInactive}`}><Settings size={20} /><span>הגדרות</span></button>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'add' ? s.navActive : s.navInactive}`}><Plus size={20} /><span>הוסף מאמר</span></button>
+                                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'settings' ? s.navActive : s.navInactive}`}><Settings size={20} /><span>הגדרות</span></button>
                             </>}
                         </nav>
-                        <div className={`p-4 border-t ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
+                        
+                        <div className={`p-4 border-t flex-shrink-0 ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
                             {user ? (
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-lg text-white relative group">
-                                        {user.displayName?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || 'U'}
-                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 ${theme === 'dark' ? 'border-[#090513]' : 'border-white'} ${isOnline && !user.isLocal ? 'bg-green-500' : 'bg-slate-500'}`}>{isOnline && !user.isLocal ? <Cloud size={10} className="text-white" /> : <WifiOff size={10} className="text-white" />}</div>
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-white relative flex-shrink-0 shadow-lg">
+                                        {user.displayName?.[0]?.toUpperCase() || 'U'}
+                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 ${theme === 'dark' ? 'border-[#090513]' : 'border-white'} ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}>
+                                            {isOnline ? <Cloud size={10} className="text-white"/> : <WifiOff size={10} className="text-white"/>}
+                                        </div>
                                     </div>
-                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName || user.username}</p><p className={`text-[10px] flex items-center gap-1 ${s.textMuted}`}>{user.isLocal ? 'חשבון מקומי' : (isOnline ? 'מחובר לענן' : 'אופליין')}</p></div>
-                                    <button onClick={requestLogout} className={`p-2 ${s.textMuted} hover:text-red-400`}><LogOut size={18} /></button>
+                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName}</p><p className={`text-[10px] ${s.textMuted}`}>מחובר</p></div>
+                                    <button onClick={() => signOut(auth)} className={`p-2 ${s.textMuted} hover:text-red-400`}><LogOut size={18} /></button>
                                 </div>
                             ) : (
-                                <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-lg text-white font-bold shadow-lg text-sm">התחברות</button>
+                                <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 rounded-lg text-white font-bold shadow-lg shadow-fuchsia-600/20 hover:bg-fuchsia-500 transition">התחברות / הרשמה</button>
                             )}
                         </div>
                     </aside>
 
-                    <main className="flex-1 overflow-y-auto relative scroll-smooth p-4 md:p-10">
-                        <div className="md:hidden flex justify-between items-center mb-6">
-                            <h1 className="text-lg font-bold">Shoval<span className="text-fuchsia-500">Games</span></h1>
-                            <div className="flex gap-4">
-                                {user && <button onClick={() => setView('settings')}><Settings size={20} className={s.text} /></button>}
-                                {user ? <button onClick={requestLogout}><LogOut size={20} className={s.text} /></button> : <button onClick={() => setView('login')} className="text-fuchsia-400 font-bold">התחבר</button>}
-                            </div>
-                        </div>
-
-                        {/* --- דף הגדרות חדש --- */}
-                        {view === 'settings' && user && (
-                            <div className="max-w-2xl mx-auto space-y-8 animate-in zoom-in-95">
-                                <h2 className="text-4xl font-black mb-6">הגדרות מערכת</h2>
-                                
-                                {/* הגדרות תצוגה */}
-                                <div className={`${s.card} p-6 rounded-3xl border transition-colors duration-300`}>
-                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Palette className="text-fuchsia-500" /> מראה ותצוגה</h3>
-                                    <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-black/5">
-                                        <div className="flex items-center gap-3">
-                                            {theme === 'dark' ? <Moon size={24} /> : <Sun size={24} className="text-yellow-500" />}
-                                            <div>
-                                                <div className="font-bold">מצב לילה / יום</div>
-                                                <div className={`text-xs ${s.textMuted}`}>{theme === 'dark' ? 'ערכת נושא כהה פעילה' : 'ערכת נושא בהירה פעילה'}</div>
-                                            </div>
-                                        </div>
-                                        <button 
-                                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                                            className={`px-4 py-2 rounded-lg font-bold transition-all ${theme === 'dark' ? 'bg-white text-black hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
-                                        >
-                                            שנה למצב {theme === 'dark' ? 'בהיר' : 'כהה'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* קרדיטים */}
-                                <div className={`${s.card} p-6 rounded-3xl border transition-colors duration-300`}>
-                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Monitor className="text-cyan-500" /> אודות המערכת</h3>
-                                    <div className="space-y-4 text-sm">
-                                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                                            <span className={s.textMuted}>כתיבת קוד ופיתוח</span>
-                                            <span className="font-bold">Gemini AI</span>
-                                        </div>
-                                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                                            <span className={s.textMuted}>רעיונות ואפיון</span>
-                                            <span className="font-bold">Shoval Kaufman</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-2">
-                                            <span className={s.textMuted}>מערכת הפעלה</span>
-                                            <span className="font-bold text-fuchsia-500" style={{direction: 'ltr'}}>Powered by Shoval OS</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* אזור סכנה - מחיקת חשבון */}
-                                <div className={`${s.card} p-6 rounded-3xl border border-red-500/30 bg-red-500/5`}>
-                                    <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 /> אזור סכנה</h3>
-                                    <p className={`text-sm ${s.textMuted} mb-4`}>מחיקת החשבון היא פעולה בלתי הפיכה. כל המידע האישי שלך יימחק לצמיתות.</p>
-                                    <button 
-                                        onClick={handleDeleteAccount}
-                                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-lg transition-colors"
-                                    >
-                                        מחק את החשבון שלי
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {(view === 'login' || view === 'register') && (
-                            <div className={`max-w-md mx-auto mt-10 p-8 rounded-3xl border shadow-2xl animate-in zoom-in-95 ${s.card}`}>
-                                <h2 className="text-2xl font-black mb-2 text-center">{view === 'login' ? 'כניסה למערכת' : 'הרשמה חדשה'}</h2>
-                                <p className={`text-center text-xs mb-6 flex items-center justify-center gap-1 ${s.textMuted}`}>{isOnline ? <span className="text-green-400 flex gap-1 items-center"><Cloud size={14}/> מצב אונליין</span> : <span className="text-yellow-400 flex gap-1 items-center"><WifiOff size={14}/> מצב אופליין</span>}</p>
-                                <form onSubmit={view === 'login' ? handleLogin : handleRegister} className="space-y-4">
-                                    {view === 'register' && <div><label className={`text-xs font-bold ${s.textMuted}`}>שם משתמש</label><input required type="text" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>}
-                                    <div><label className={`text-xs font-bold ${s.textMuted}`}>אימייל</label><input required type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>
-                                    <div><label className={`text-xs font-bold ${s.textMuted}`}>סיסמה {view === 'register' && "(מינימום 6 תווים)"}</label><input required type="password" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} /></div>
-                                    <button type="submit" className="w-full py-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-xl font-bold text-white shadow-lg mt-4">{view === 'login' ? 'היכנס' : 'הירשם'}</button>
-                                </form>
-                                <div className="text-center mt-4 text-sm"><button onClick={() => setView(view === 'login' ? 'register' : 'login')} className={`underline ${s.textMuted}`}>{view === 'login' ? 'אין חשבון? הירשם' : 'יש חשבון? התחבר'}</button></div>
-                                <div className="text-center mt-4"><button onClick={() => setView('library')} className={`text-xs ${s.textMuted}`}>המשך כאורח</button></div>
-                            </div>
-                        )}
-
-                        {(view === 'library' || view === 'beta' || view === 'user-articles') && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                    {/* Main Content Area */}
+                    <main className="flex-1 overflow-y-auto relative scroll-smooth p-4 md:p-10 custom-scrollbar z-10">
+                        
+                        {/* Library View */}
+                        {view === 'library' && (
+                            <div className="space-y-8 animate-in">
                                 <div className={`flex flex-col md:flex-row gap-6 justify-between items-start md:items-end border-b pb-6 ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
-                                    <div><h2 className="text-4xl font-black mb-2">{pageTitle}</h2><p className={s.textMuted}>ברוכים הבאים לארכיון העולמי של משחקי הוידאו</p></div>
-                                    <div className="relative w-full md:w-96"><Search className={`absolute right-4 top-3.5 ${s.textMuted}`} size={20} /><input type="text" placeholder="חיפוש..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full rounded-xl py-3 pr-12 pl-4 outline-none ${s.input}`} /></div>
+                                    <div><h2 className="text-4xl font-black mb-2">הספרייה</h2><p className={s.textMuted}>כל המאמרים שנוספו על ידי הקהילה.</p></div>
+                                    <div className="relative w-full md:w-96">
+                                        <Search className={`absolute right-4 top-3.5 ${s.textMuted}`} size={20} />
+                                        <input type="text" placeholder="חיפוש משחקים..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full rounded-xl py-3 pr-12 pl-4 outline-none ${s.input}`} />
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                    {filteredList.map(game => (
-                                        <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all cursor-pointer relative ${s.card} hover:border-fuchsia-500/30 hover:shadow-2xl`}>
-                                            <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold border border-white/10 text-white">{game.releaseDate && new Date(game.releaseDate) > new Date() ? <span className="text-cyan-400">בטא • {new Date(game.releaseDate).toLocaleDateString('he-IL')}</span> : <span className="text-green-400">שוחרר • {game.releaseDate ? new Date(game.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span>}</div>
-                                            <div className="h-48 bg-black relative overflow-hidden">{game.imageUrl ? <img src={game.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" /> : <div className="w-full h-full flex items-center justify-center bg-[#0d1117]"><Gamepad2 size={40} className="text-slate-800" /></div>}
-                                                <div className="absolute bottom-3 right-3 flex gap-2"><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-fuchsia-400">{game.genre || 'כללי'}</span><span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-[10px] font-bold text-yellow-400 flex items-center gap-1"><Star size={10} fill="currentColor"/> {game.rating || '-'}</span></div>
+                                {games.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-32 text-center opacity-30">
+                                        <BookOpen size={80} className="mb-6" />
+                                        <h3 className="text-2xl font-bold">הספרייה ריקה</h3>
+                                        <p>היה הראשון לשתף מאמר על משחק!</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-24 md:pb-0">
+                                        {games.filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase())).map(game => (
+                                            <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer relative ${s.card} hover:scale-[1.02] hover:shadow-2xl hover:border-fuchsia-500/30`}>
+                                                <div className="h-48 bg-black/20 relative overflow-hidden">
+                                                    {game.imageUrl ? (
+                                                        <img src={game.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={game.title} />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center"><Gamepad2 size={40} className="opacity-10" /></div>
+                                                    )}
+                                                    <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white">{game.genre || 'כללי'}</div>
+                                                </div>
+                                                <div className="p-5">
+                                                    <h3 className="font-bold text-lg mb-1 group-hover:text-fuchsia-500 transition-colors truncate">{game.title}</h3>
+                                                    <div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div>
+                                                    <p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p>
+                                                </div>
                                             </div>
-                                            <div className="p-5"><h3 className="font-bold text-lg mb-1 group-hover:text-fuchsia-400 line-clamp-1">{game.title}</h3><div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div><p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p></div>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
 
+                        {/* Add/Edit View */}
                         {view === 'add' && user && (
-                            <div className="max-w-4xl mx-auto animate-in zoom-in-95">
+                            <div className="max-w-3xl mx-auto animate-in pb-24 md:pb-0">
                                 <div className={`rounded-3xl p-8 border shadow-2xl ${s.card}`}>
-                                    <h2 className="text-3xl font-black mb-8 flex items-center gap-3">{editingId ? <Edit2 className="text-yellow-400"/> : <Plus className="text-green-400"/>} {editingId ? 'עריכה' : 'הוספה'}</h2>
+                                    <h2 className="text-3xl font-black mb-8">{editingId ? 'עריכת מאמר' : 'הוספת מאמר חדש'}</h2>
                                     <form onSubmit={handleSaveGame} className="space-y-6">
                                         <div className="grid md:grid-cols-2 gap-6">
-                                            <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>שם המשחק (חובה)</label><input required type="text" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
-                                            <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>ז'אנר</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">שם המשחק *</label>
+                                                <input required placeholder="לדוגמה: Minecraft" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">ז'אנר</label>
+                                                <input placeholder="לדוגמה: Sandbox, RPG" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
                                         </div>
-                                        <div className="grid md:grid-cols-3 gap-6">
-                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תאריך יציאה</label><input type="date" value={gameForm.releaseDate} onChange={e => setGameForm({...gameForm, releaseDate: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
-                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>דירוג</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
-                                            <div className="col-span-1"><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תמונה (URL)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full rounded-xl p-3.5 outline-none ${s.input}`} /></div>
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">דירוג (0-10)</label>
+                                                <input type="number" min="0" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">קישור לתמונה (URL)</label>
+                                                <input placeholder="https://..." value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
                                         </div>
-                                        <div><label className={`text-xs font-bold mb-1 block ${s.textMuted}`}>תוכן (חובה)</label><textarea required rows="8" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full rounded-xl p-4 outline-none resize-none ${s.input}`} /></div>
-                                        <div className="pt-4 flex justify-end gap-3">
-                                            <button type="button" onClick={() => setView('library')} className={`px-6 py-3 rounded-xl hover:opacity-80 ${s.textMuted}`}>ביטול</button>
-                                            <button type="submit" className="bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg">שמור</button>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold mr-2">תוכן המאמר *</label>
+                                            <textarea required rows="10" placeholder="ספר לנו על המשחק..." value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full rounded-2xl p-4 outline-none resize-none ${s.input}`} />
+                                        </div>
+                                        <div className="flex justify-end gap-3 pt-4">
+                                            <button type="button" onClick={() => setView('library')} className={`px-6 py-3 rounded-xl font-bold ${s.textMuted}`}>ביטול</button>
+                                            <button type="submit" className="bg-fuchsia-600 px-10 py-3 rounded-xl font-bold text-white shadow-lg shadow-fuchsia-600/20 hover:bg-fuchsia-500 transition">שמור ופרסם</button>
                                         </div>
                                     </form>
                                 </div>
                             </div>
                         )}
 
+                        {/* Settings View */}
+                        {view === 'settings' && (
+                            <div className="max-w-2xl mx-auto space-y-8 animate-in pb-24 md:pb-0">
+                                <h2 className="text-4xl font-black mb-6">הגדרות</h2>
+                                <div className={`${s.card} p-6 rounded-3xl border`}>
+                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Palette className="text-fuchsia-500" /> מראה המערכת</h3>
+                                    <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="w-full flex justify-between items-center p-5 rounded-xl bg-black/5 border border-white/5 transition hover:bg-black/10">
+                                        <div className="flex gap-4 items-center">{theme === 'dark' ? <Moon size={24}/> : <Sun size={24} className="text-yellow-500"/>} <div><p className="font-bold">מצב {theme === 'dark' ? 'לילה' : 'יום'}</p><p className="text-xs opacity-50">שינוי צבעי הממשק</p></div></div>
+                                        <div className="text-fuchsia-500 font-bold">החלף</div>
+                                    </button>
+                                </div>
+                                <div className={`${s.card} p-6 rounded-3xl border border-red-500/20`}>
+                                    <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20} /> אזור סכנה</h3>
+                                    <p className={`text-sm mb-4 ${s.textMuted}`}>מחיקת החשבון תסיר את כל הגישה שלך למאמרים שכתבת. פעולה זו בלתי הפיכה.</p>
+                                    <button onClick={handleDeleteAccount} className="w-full py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl font-bold transition duration-300">מחק חשבון לצמיתות</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Detail View */}
                         {view === 'detail' && selectedGame && (
-                            <div className="animate-in zoom-in-95 max-w-5xl mx-auto">
-                                <div className="relative h-[400px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8 group">
-                                    <div className="absolute top-6 right-6 z-20"><button onClick={() => setView('library')} className="bg-black/40 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/20"><ArrowRight size={20} /></button></div>
+                            <div className="animate-in max-w-5xl mx-auto pb-24 md:pb-0">
+                                <div className="relative h-[450px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8">
+                                    <button onClick={() => setView('library')} className="absolute top-6 right-6 z-20 bg-black/60 backdrop-blur-md p-3 rounded-full text-white hover:bg-black transition"><ArrowRight size={24} /></button>
                                     {user && user.uid === selectedGame.authorId && (
                                         <div className="absolute top-6 left-6 z-20 flex gap-3">
-                                            <button onClick={() => startEdit(selectedGame)} className="bg-blue-500/20 backdrop-blur-md text-blue-400 p-3 rounded-full hover:bg-blue-500"><Edit2 size={20} /></button>
-                                            <button onClick={() => requestDelete(selectedGame.id)} className="bg-red-500/20 backdrop-blur-md text-red-400 p-3 rounded-full hover:bg-red-500"><Trash2 size={20} /></button>
+                                            <button onClick={() => { setGameForm(selectedGame); setEditingId(selectedGame.id); setView('add'); }} className="bg-blue-500/30 p-3 rounded-full text-blue-400 backdrop-blur-md hover:bg-blue-500/50 transition"><Edit2 size={20} /></button>
+                                            <button onClick={() => setConfirmModal({ msg: "האם אתה בטוח שברצונך למחוק את המאמר הזה?", onConfirm: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', selectedGame.id)); setView('library'); setConfirmModal(null); }})} className="bg-red-500/30 p-3 rounded-full text-red-400 backdrop-blur-md hover:bg-red-500/50 transition"><Trash2 size={20} /></button>
                                         </div>
                                     )}
-                                    {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[#161b2e] flex items-center justify-center"><Gamepad2 size={100} className="text-white/5" /></div>}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-[#090513]/60 to-transparent"></div>
-                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white"><h1 className="text-6xl font-black drop-shadow-2xl mb-2">{selectedGame.title}</h1><div className="flex items-center gap-4 text-sm text-slate-300 mt-2"><div className="flex items-center gap-1"><UserCircle size={16} /> <span>{selectedGame.authorName}</span></div><div className="flex items-center gap-1"><Calendar size={16} /> <span>{selectedGame.releaseDate ? new Date(selectedGame.releaseDate).toLocaleDateString('he-IL') : 'זמין'}</span></div></div></div>
+                                    {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" alt={selectedGame.title} /> : <div className="w-full h-full bg-gradient-to-br from-fuchsia-900 to-slate-900 flex items-center justify-center"><Gamepad2 size={100} className="opacity-10"/></div>}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-transparent to-transparent"></div>
+                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white">
+                                        <div className="bg-fuchsia-600 w-fit px-3 py-1 rounded-full text-xs font-black mb-4 uppercase tracking-wider">{selectedGame.genre || 'Wiki'}</div>
+                                        <h1 className="text-4xl md:text-7xl font-black mb-4 drop-shadow-lg">{selectedGame.title}</h1>
+                                        <div className="flex flex-wrap gap-6 items-center opacity-80 font-bold">
+                                            <span className="flex items-center gap-2"><UserCircle size={20}/> נכתב ע"י {selectedGame.authorName}</span>
+                                            <span className="flex items-center gap-2"><Star size={20} className="text-yellow-400 fill-yellow-400"/> {selectedGame.rating}/10</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className={`rounded-3xl p-10 border shadow-lg ${s.card}`}><div className={`flex items-center gap-3 mb-6 pb-4 border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}><BookOpen className="text-cyan-400" /><h3 className="text-2xl font-bold">תוכן</h3></div><p className={`text-lg leading-relaxed font-light whitespace-pre-wrap ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{selectedGame.description}</p></div>
+                                <div className={`${s.card} p-8 md:p-12 rounded-3xl border shadow-xl`}>
+                                    <p className="text-lg md:text-xl leading-relaxed whitespace-pre-wrap">{selectedGame.description}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Auth Forms */}
+                        {(view === 'login' || view === 'register') && (
+                            <div className="flex items-center justify-center pt-10">
+                                <div className={`max-w-md w-full p-10 rounded-3xl border shadow-2xl animate-in ${s.card}`}>
+                                    <div className="flex justify-center mb-6 text-fuchsia-500"><UserCircle size={60} /></div>
+                                    <h2 className="text-3xl font-black mb-2 text-center">{view === 'login' ? 'ברוך השב!' : 'הצטרף לקהילה'}</h2>
+                                    <p className={`text-center text-sm mb-8 ${s.textMuted}`}>{view === 'login' ? 'הכנס את הפרטים כדי להמשיך לערוך' : 'צור חשבון והתחל לכתוב מאמרים'}</p>
+                                    <form onSubmit={handleAuth} className="space-y-4">
+                                        {view === 'register' && <input required placeholder="שם תצוגה" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />}
+                                        <input required type="email" placeholder="אימייל" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
+                                        <input required type="password" placeholder="סיסמה (לפחות 6 תווים)" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
+                                        <button className="w-full py-4 bg-fuchsia-600 rounded-xl font-bold text-white mt-4 shadow-lg shadow-fuchsia-600/30 hover:bg-fuchsia-500 transition-all active:scale-95">{view === 'login' ? 'התחבר עכשיו' : 'צור חשבון'}</button>
+                                    </form>
+                                    <button onClick={() => setView(view === 'login' ? 'register' : 'login')} className={`w-full text-center mt-6 text-sm font-bold ${s.textMuted} hover:text-fuchsia-500 transition-colors`}>{view === 'login' ? 'אין לך חשבון? הירשם כאן' : 'כבר יש לך חשבון? התחבר כאן'}</button>
+                                </div>
                             </div>
                         )}
                     </main>
 
-                    <nav className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl border-t z-50 flex justify-around items-center p-3 pb-safe transition-colors duration-300" style={{backgroundColor: theme === 'dark' ? 'rgba(15, 10, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}}>
-                        <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'library' ? 'text-fuchsia-400' : s.textMuted}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
+                    {/* Mobile Navigation Bar */}
+                    <nav className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl border-t z-[60] flex justify-around items-center p-4 transition-theme" style={{backgroundColor: theme === 'dark' ? 'rgba(15, 10, 30, 0.98)' : 'rgba(255, 255, 255, 0.98)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}}>
+                        <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 transition ${view === 'library' ? 'text-fuchsia-400' : s.textMuted}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
                         {user ? (
                             <>
-                                <button onClick={() => setView('add')} className="bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-4 rounded-full shadow-lg -mt-8 border-4 border-[#090513] text-white"><Plus size={24} /></button>
-                                <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 p-2 rounded-xl ${view === 'settings' ? 'text-cyan-400' : s.textMuted}`}><Settings size={24} /><span className="text-[10px] font-bold">הגדרות</span></button>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' }); setView('add'); }} className="bg-fuchsia-600 p-4 rounded-full shadow-2xl -mt-10 text-white border-4 border-[#090513] active:scale-90 transition"><Plus size={24} /></button>
+                                <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 transition ${view === 'settings' ? 'text-cyan-400' : s.textMuted}`}><Settings size={24} /><span className="text-[10px] font-bold">הגדרות</span></button>
                             </>
                         ) : (
-                            <button onClick={() => setView('login')} className="flex flex-col items-center gap-1 p-2 rounded-xl text-slate-500"><User size={24} /><span className="text-[10px] font-bold">התחבר</span></button>
+                            <button onClick={() => setView('login')} className={`flex flex-col items-center gap-1 transition ${view === 'login' ? 'text-fuchsia-400' : s.textMuted}`}><UserCircle size={24} /><span className="text-[10px] font-bold">כניסה</span></button>
                         )}
                     </nav>
                 </div>
@@ -618,3 +462,469 @@
     </script>
 </body>
 </html>
+
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shoval Games Wiki - הארכיון העולמי</title>
+    
+    <!-- External Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200;300;400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body { 
+            font-family: 'Assistant', sans-serif; 
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Custom Scrollbar for modern look */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(192, 38, 211, 0.5); }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+
+        /* Smooth transitions for theme switching */
+        .transition-theme { transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease; }
+    </style>
+</head>
+<body class="overflow-hidden selection:bg-fuchsia-500 selection:text-white">
+
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        /**
+         * Shoval Games Wiki - Main Application Logic
+         * Features: Firebase Auth, Firestore Sync, Offline Support (Persistence), Dark/Light Mode
+         */
+        import React, { useState, useEffect } from "https://esm.sh/react@18.2.0";
+        import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+        import { 
+            Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
+            User, Info, Home, LayoutGrid, Library, LogOut, 
+            UserCircle, Lock, Mail, Edit2, AlertTriangle, X, Check,
+            Cloud, WifiOff, Settings, Moon, Sun, Palette
+        } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { 
+            getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+            signOut, onAuthStateChanged, updateProfile, deleteUser 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { 
+            getFirestore, collection, doc, setDoc, deleteDoc, 
+            onSnapshot, query, orderBy, serverTimestamp, enableIndexedDbPersistence 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCDJsjBKWVdMs7vsHmjKi-cbAMy-Huxfgs",
+            authDomain: "shoval-games-wiki-7ff87.firebaseapp.com",
+            projectId: "shoval-games-wiki-7ff87",
+            storageBucket: "shoval-games-wiki-7ff87.firebasestorage.app",
+            messagingSenderId: "1013671724448",
+            appId: "1:1013671724448:web:84c0a3ee694cdc1ef850c5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // App ID consistent with cloud rules
+        const appId = "shoval-games-wiki-v2"; 
+
+        // --- Enable Offline Persistence ---
+        enableIndexedDbPersistence(db).catch((err) => {
+            if (err.code == 'failed-precondition') {
+                console.warn("Persistence failed: Multiple tabs open.");
+            } else if (err.code == 'unimplemented') {
+                console.warn("Persistence failed: Browser not supported.");
+            }
+        });
+
+        function App() {
+            // State Management
+            const [user, setUser] = useState(null); 
+            const [theme, setTheme] = useState(() => localStorage.getItem('shoval_theme') || 'dark');
+            const [games, setGames] = useState([]);
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
+            const [view, setView] = useState('library'); 
+            const [selectedGame, setSelectedGame] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [editingId, setEditingId] = useState(null); 
+            const [gameForm, setGameForm] = useState({ title: '', genre: '', rating: 5, description: '', imageUrl: '' });
+            const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
+            const [toast, setToast] = useState(null); 
+            const [confirmModal, setConfirmModal] = useState(null); 
+
+            // Toast helper
+            const showToast = (msg, type = 'success') => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 4000);
+            };
+
+            // Theme Management
+            useEffect(() => {
+                localStorage.setItem('shoval_theme', theme);
+                document.body.className = theme === 'dark' 
+                    ? "bg-[#090513] text-slate-100 overflow-hidden transition-theme"
+                    : "bg-slate-50 text-slate-900 overflow-hidden transition-theme";
+            }, [theme]);
+
+            // Connectivity Monitor
+            useEffect(() => {
+                const handleStatusChange = () => setIsOnline(navigator.onLine);
+                window.addEventListener('online', handleStatusChange);
+                window.addEventListener('offline', handleStatusChange);
+                return () => {
+                    window.removeEventListener('online', handleStatusChange);
+                    window.removeEventListener('offline', handleStatusChange);
+                };
+            }, []);
+
+            // Auth Listener
+            useEffect(() => {
+                return onAuthStateChanged(auth, (u) => {
+                    if (u) setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email });
+                    else setUser(null);
+                });
+            }, []);
+
+            // Real-time Data Sync
+            useEffect(() => {
+                const q = query(
+                    collection(db, 'artifacts', appId, 'public', 'data', 'games'), 
+                    orderBy('createdAt', 'desc')
+                );
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const serverGames = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data(),
+                        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString()
+                    }));
+                    setGames(serverGames);
+                }, (err) => {
+                    console.error("Firestore Error:", err);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // Dynamic Styles based on theme
+            const getStyles = () => {
+                const isDark = theme === 'dark';
+                return {
+                    bg: isDark ? 'bg-[#090513]' : 'bg-slate-50',
+                    card: isDark ? 'bg-[#161b2e] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-800 shadow-xl',
+                    sidebar: isDark ? 'bg-[#0f0a1e]/90 border-white/5' : 'bg-white/90 border-slate-200 shadow-2xl',
+                    input: isDark ? 'bg-black/30 border-white/10 text-white focus:border-fuchsia-500' : 'bg-slate-100 border-slate-300 text-slate-900 focus:border-fuchsia-500',
+                    text: isDark ? 'text-slate-100' : 'text-slate-800',
+                    textMuted: isDark ? 'text-slate-400' : 'text-slate-500',
+                    navActive: isDark ? 'bg-white/10 text-white' : 'bg-fuchsia-100 text-fuchsia-700',
+                    navInactive: isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                };
+            };
+            const s = getStyles();
+
+            // Authentication Handlers
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                try {
+                    if (view === 'login') {
+                        await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
+                    } else {
+                        if (authForm.password.length < 6) throw { code: 'weak-password' };
+                        const c = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
+                        await updateProfile(c.user, { displayName: authForm.username });
+                    }
+                    setView('library'); 
+                    showToast("התחברת בהצלחה!");
+                } catch (err) {
+                    let errorMsg = "שגיאה בפרטים";
+                    if (err.code === 'auth/email-already-in-use') errorMsg = "האימייל כבר קיים במערכת";
+                    if (err.code === 'auth/weak-password') errorMsg = "הסיסמה חייבת להיות לפחות 6 תווים";
+                    showToast(errorMsg, "error");
+                }
+            };
+
+            // CRUD Handlers
+            const handleSaveGame = async (e) => {
+                e.preventDefault();
+                if (!user) return showToast("התחבר כדי לשמור", "error");
+                const gameId = editingId || Date.now().toString();
+                const payload = {
+                    ...gameForm,
+                    authorId: user.uid,
+                    authorName: user.displayName,
+                    updatedAt: serverTimestamp(),
+                    createdAt: editingId ? games.find(g=>g.id===editingId).createdAt : serverTimestamp()
+                };
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId), payload);
+                    showToast("המאמר נשמר!");
+                    setEditingId(null);
+                    setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' });
+                    setView('library');
+                } catch (err) { showToast("שגיאה בשמירה", "error"); }
+            };
+
+            const handleDeleteAccount = async () => {
+                if (!auth.currentUser) return;
+                setConfirmModal({
+                    msg: "מחיקת חשבון היא לצמיתות. כל המידע שלך ימחק. להמשיך?",
+                    onConfirm: async () => {
+                        try {
+                            await deleteUser(auth.currentUser);
+                            setUser(null);
+                            setView('library');
+                            showToast("החשבון נמחק");
+                        } catch (e) { showToast("עליך להתחבר מחדש כדי למחוק חשבון", "error"); }
+                        setConfirmModal(null);
+                    }
+                });
+            };
+
+            return (
+                <div className={`flex h-screen font-sans overflow-hidden transition-theme ${s.bg} ${s.text}`} dir="rtl">
+                    
+                    {/* Background Decorative Blobs */}
+                    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+                        <div className={`absolute top-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-fuchsia-900/10' : 'bg-fuchsia-200/40'}`}></div>
+                        <div className={`absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full blur-[120px] ${theme === 'dark' ? 'bg-cyan-900/10' : 'bg-cyan-200/40'}`}></div>
+                    </div>
+
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in ${toast.type === 'error' ? 'bg-red-500' : 'bg-fuchsia-600'} text-white`}>
+                            {toast.type === 'error' ? <AlertTriangle size={18} /> : <Check size={18} />}
+                            <span className="font-bold text-sm">{toast.msg}</span>
+                        </div>
+                    )}
+
+                    {/* Confirmation Modal */}
+                    {confirmModal && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in">
+                            <div className={`${s.card} p-6 rounded-2xl shadow-2xl max-w-sm w-full text-center border`}>
+                                <h3 className="text-xl font-bold mb-4">אישור פעולה</h3>
+                                <p className={`mb-6 ${s.textMuted}`}>{confirmModal.msg}</p>
+                                <div className="flex gap-3 justify-center">
+                                    <button onClick={() => setConfirmModal(null)} className={`px-4 py-2 rounded-lg ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-200'}`}>ביטול</button>
+                                    <button onClick={confirmModal.onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white font-bold">אשר</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Desktop Sidebar */}
+                    <aside className={`hidden md:flex w-72 flex-col backdrop-blur-xl border-l h-full relative z-20 ${s.sidebar}`}>
+                        <div className="p-8 pb-4 cursor-pointer flex-shrink-0" onClick={() => setView('library')}>
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className={`p-2.5 rounded-xl border ${theme === 'dark' ? 'bg-black border-white/10 text-white' : 'bg-fuchsia-600 border-transparent text-white'}`}><Gamepad2 size={28} /></div>
+                                <div><h1 className="text-lg font-black">Shoval<span className="text-fuchsia-500">Games</span></h1><p className={`text-[10px] ${s.textMuted}`}>ארכיון המשחקים</p></div>
+                            </div>
+                        </div>
+                        
+                        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto custom-scrollbar">
+                            <button onClick={() => setView('library')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'library' ? s.navActive : s.navInactive}`}><Library size={20} /><span>הספרייה</span></button>
+                            {user && <>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' }); setView('add'); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'add' ? s.navActive : s.navInactive}`}><Plus size={20} /><span>הוסף מאמר</span></button>
+                                <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition ${view === 'settings' ? s.navActive : s.navInactive}`}><Settings size={20} /><span>הגדרות</span></button>
+                            </>}
+                        </nav>
+                        
+                        <div className={`p-4 border-t flex-shrink-0 ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
+                            {user ? (
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-600 to-purple-600 flex items-center justify-center font-bold text-white relative flex-shrink-0 shadow-lg">
+                                        {user.displayName?.[0]?.toUpperCase() || 'U'}
+                                        <div className={`absolute -top-1 -right-1 rounded-full p-0.5 border-2 ${theme === 'dark' ? 'border-[#090513]' : 'border-white'} ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}>
+                                            {isOnline ? <Cloud size={10} className="text-white"/> : <WifiOff size={10} className="text-white"/>}
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-hidden"><p className="text-sm font-bold truncate">{user.displayName}</p><p className={`text-[10px] ${s.textMuted}`}>מחובר</p></div>
+                                    <button onClick={() => signOut(auth)} className={`p-2 ${s.textMuted} hover:text-red-400`}><LogOut size={18} /></button>
+                                </div>
+                            ) : (
+                                <button onClick={() => setView('login')} className="w-full py-2 bg-fuchsia-600 rounded-lg text-white font-bold shadow-lg shadow-fuchsia-600/20 hover:bg-fuchsia-500 transition">התחברות / הרשמה</button>
+                            )}
+                        </div>
+                    </aside>
+
+                    {/* Main Content Area */}
+                    <main className="flex-1 overflow-y-auto relative scroll-smooth p-4 md:p-10 custom-scrollbar z-10">
+                        
+                        {/* Library View */}
+                        {view === 'library' && (
+                            <div className="space-y-8 animate-in">
+                                <div className={`flex flex-col md:flex-row gap-6 justify-between items-start md:items-end border-b pb-6 ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+                                    <div><h2 className="text-4xl font-black mb-2">הספרייה</h2><p className={s.textMuted}>כל המאמרים שנוספו על ידי הקהילה.</p></div>
+                                    <div className="relative w-full md:w-96">
+                                        <Search className={`absolute right-4 top-3.5 ${s.textMuted}`} size={20} />
+                                        <input type="text" placeholder="חיפוש משחקים..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full rounded-xl py-3 pr-12 pl-4 outline-none ${s.input}`} />
+                                    </div>
+                                </div>
+                                {games.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-32 text-center opacity-30">
+                                        <BookOpen size={80} className="mb-6" />
+                                        <h3 className="text-2xl font-bold">הספרייה ריקה</h3>
+                                        <p>היה הראשון לשתף מאמר על משחק!</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-24 md:pb-0">
+                                        {games.filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase())).map(game => (
+                                            <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer relative ${s.card} hover:scale-[1.02] hover:shadow-2xl hover:border-fuchsia-500/30`}>
+                                                <div className="h-48 bg-black/20 relative overflow-hidden">
+                                                    {game.imageUrl ? (
+                                                        <img src={game.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={game.title} />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center"><Gamepad2 size={40} className="opacity-10" /></div>
+                                                    )}
+                                                    <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white">{game.genre || 'כללי'}</div>
+                                                </div>
+                                                <div className="p-5">
+                                                    <h3 className="font-bold text-lg mb-1 group-hover:text-fuchsia-500 transition-colors truncate">{game.title}</h3>
+                                                    <div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div>
+                                                    <p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Add/Edit View */}
+                        {view === 'add' && user && (
+                            <div className="max-w-3xl mx-auto animate-in pb-24 md:pb-0">
+                                <div className={`rounded-3xl p-8 border shadow-2xl ${s.card}`}>
+                                    <h2 className="text-3xl font-black mb-8">{editingId ? 'עריכת מאמר' : 'הוספת מאמר חדש'}</h2>
+                                    <form onSubmit={handleSaveGame} className="space-y-6">
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">שם המשחק *</label>
+                                                <input required placeholder="לדוגמה: Minecraft" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">ז'אנר</label>
+                                                <input placeholder="לדוגמה: Sandbox, RPG" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                        </div>
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">דירוג (0-10)</label>
+                                                <input type="number" min="0" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-bold mr-2">קישור לתמונה (URL)</label>
+                                                <input placeholder="https://..." value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold mr-2">תוכן המאמר *</label>
+                                            <textarea required rows="10" placeholder="ספר לנו על המשחק..." value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full rounded-2xl p-4 outline-none resize-none ${s.input}`} />
+                                        </div>
+                                        <div className="flex justify-end gap-3 pt-4">
+                                            <button type="button" onClick={() => setView('library')} className={`px-6 py-3 rounded-xl font-bold ${s.textMuted}`}>ביטול</button>
+                                            <button type="submit" className="bg-fuchsia-600 px-10 py-3 rounded-xl font-bold text-white shadow-lg shadow-fuchsia-600/20 hover:bg-fuchsia-500 transition">שמור ופרסם</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Settings View */}
+                        {view === 'settings' && (
+                            <div className="max-w-2xl mx-auto space-y-8 animate-in pb-24 md:pb-0">
+                                <h2 className="text-4xl font-black mb-6">הגדרות</h2>
+                                <div className={`${s.card} p-6 rounded-3xl border`}>
+                                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Palette className="text-fuchsia-500" /> מראה המערכת</h3>
+                                    <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="w-full flex justify-between items-center p-5 rounded-xl bg-black/5 border border-white/5 transition hover:bg-black/10">
+                                        <div className="flex gap-4 items-center">{theme === 'dark' ? <Moon size={24}/> : <Sun size={24} className="text-yellow-500"/>} <div><p className="font-bold">מצב {theme === 'dark' ? 'לילה' : 'יום'}</p><p className="text-xs opacity-50">שינוי צבעי הממשק</p></div></div>
+                                        <div className="text-fuchsia-500 font-bold">החלף</div>
+                                    </button>
+                                </div>
+                                <div className={`${s.card} p-6 rounded-3xl border border-red-500/20`}>
+                                    <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20} /> אזור סכנה</h3>
+                                    <p className={`text-sm mb-4 ${s.textMuted}`}>מחיקת החשבון תסיר את כל הגישה שלך למאמרים שכתבת. פעולה זו בלתי הפיכה.</p>
+                                    <button onClick={handleDeleteAccount} className="w-full py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl font-bold transition duration-300">מחק חשבון לצמיתות</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Detail View */}
+                        {view === 'detail' && selectedGame && (
+                            <div className="animate-in max-w-5xl mx-auto pb-24 md:pb-0">
+                                <div className="relative h-[450px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8">
+                                    <button onClick={() => setView('library')} className="absolute top-6 right-6 z-20 bg-black/60 backdrop-blur-md p-3 rounded-full text-white hover:bg-black transition"><ArrowRight size={24} /></button>
+                                    {user && user.uid === selectedGame.authorId && (
+                                        <div className="absolute top-6 left-6 z-20 flex gap-3">
+                                            <button onClick={() => { setGameForm(selectedGame); setEditingId(selectedGame.id); setView('add'); }} className="bg-blue-500/30 p-3 rounded-full text-blue-400 backdrop-blur-md hover:bg-blue-500/50 transition"><Edit2 size={20} /></button>
+                                            <button onClick={() => setConfirmModal({ msg: "האם אתה בטוח שברצונך למחוק את המאמר הזה?", onConfirm: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', selectedGame.id)); setView('library'); setConfirmModal(null); }})} className="bg-red-500/30 p-3 rounded-full text-red-400 backdrop-blur-md hover:bg-red-500/50 transition"><Trash2 size={20} /></button>
+                                        </div>
+                                    )}
+                                    {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" alt={selectedGame.title} /> : <div className="w-full h-full bg-gradient-to-br from-fuchsia-900 to-slate-900 flex items-center justify-center"><Gamepad2 size={100} className="opacity-10"/></div>}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-transparent to-transparent"></div>
+                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white">
+                                        <div className="bg-fuchsia-600 w-fit px-3 py-1 rounded-full text-xs font-black mb-4 uppercase tracking-wider">{selectedGame.genre || 'Wiki'}</div>
+                                        <h1 className="text-4xl md:text-7xl font-black mb-4 drop-shadow-lg">{selectedGame.title}</h1>
+                                        <div className="flex flex-wrap gap-6 items-center opacity-80 font-bold">
+                                            <span className="flex items-center gap-2"><UserCircle size={20}/> נכתב ע"י {selectedGame.authorName}</span>
+                                            <span className="flex items-center gap-2"><Star size={20} className="text-yellow-400 fill-yellow-400"/> {selectedGame.rating}/10</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`${s.card} p-8 md:p-12 rounded-3xl border shadow-xl`}>
+                                    <p className="text-lg md:text-xl leading-relaxed whitespace-pre-wrap">{selectedGame.description}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Auth Forms */}
+                        {(view === 'login' || view === 'register') && (
+                            <div className="flex items-center justify-center pt-10">
+                                <div className={`max-w-md w-full p-10 rounded-3xl border shadow-2xl animate-in ${s.card}`}>
+                                    <div className="flex justify-center mb-6 text-fuchsia-500"><UserCircle size={60} /></div>
+                                    <h2 className="text-3xl font-black mb-2 text-center">{view === 'login' ? 'ברוך השב!' : 'הצטרף לקהילה'}</h2>
+                                    <p className={`text-center text-sm mb-8 ${s.textMuted}`}>{view === 'login' ? 'הכנס את הפרטים כדי להמשיך לערוך' : 'צור חשבון והתחל לכתוב מאמרים'}</p>
+                                    <form onSubmit={handleAuth} className="space-y-4">
+                                        {view === 'register' && <input required placeholder="שם תצוגה" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />}
+                                        <input required type="email" placeholder="אימייל" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
+                                        <input required type="password" placeholder="סיסמה (לפחות 6 תווים)" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
+                                        <button className="w-full py-4 bg-fuchsia-600 rounded-xl font-bold text-white mt-4 shadow-lg shadow-fuchsia-600/30 hover:bg-fuchsia-500 transition-all active:scale-95">{view === 'login' ? 'התחבר עכשיו' : 'צור חשבון'}</button>
+                                    </form>
+                                    <button onClick={() => setView(view === 'login' ? 'register' : 'login')} className={`w-full text-center mt-6 text-sm font-bold ${s.textMuted} hover:text-fuchsia-500 transition-colors`}>{view === 'login' ? 'אין לך חשבון? הירשם כאן' : 'כבר יש לך חשבון? התחבר כאן'}</button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Mobile Navigation Bar */}
+                    <nav className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-xl border-t z-[60] flex justify-around items-center p-4 transition-theme" style={{backgroundColor: theme === 'dark' ? 'rgba(15, 10, 30, 0.98)' : 'rgba(255, 255, 255, 0.98)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}}>
+                        <button onClick={() => setView('library')} className={`flex flex-col items-center gap-1 transition ${view === 'library' ? 'text-fuchsia-400' : s.textMuted}`}><Library size={24} /><span className="text-[10px] font-bold">ספרייה</span></button>
+                        {user ? (
+                            <>
+                                <button onClick={() => { setEditingId(null); setGameForm({ title: '', genre: '', rating: 5, description: '', imageUrl: '' }); setView('add'); }} className="bg-fuchsia-600 p-4 rounded-full shadow-2xl -mt-10 text-white border-4 border-[#090513] active:scale-90 transition"><Plus size={24} /></button>
+                                <button onClick={() => setView('settings')} className={`flex flex-col items-center gap-1 transition ${view === 'settings' ? 'text-cyan-400' : s.textMuted}`}><Settings size={24} /><span className="text-[10px] font-bold">הגדרות</span></button>
+                            </>
+                        ) : (
+                            <button onClick={() => setView('login')} className={`flex flex-col items-center gap-1 transition ${view === 'login' ? 'text-fuchsia-400' : s.textMuted}`}><UserCircle size={24} /><span className="text-[10px] font-bold">כניסה</span></button>
+                        )}
+                    </nav>
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
