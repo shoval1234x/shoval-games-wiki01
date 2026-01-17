@@ -40,9 +40,9 @@
         import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
         import { 
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
-            User, Info, Home, LayoutGrid, Library, LogOut, 
+            User, Info, Home, LayoutGrid, Library, LogOut, Calendar,
             UserCircle, Lock, Mail, Edit2, AlertTriangle, X, Check,
-            Cloud, WifiOff, Settings, Moon, Sun, Palette, KeyRound, Loader2
+            Cloud, WifiOff, Settings, Moon, Sun, Palette, KeyRound, Loader2, Heart, Code2
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
@@ -88,7 +88,7 @@
             const [toast, setToast] = useState(null); 
             const [confirmModal, setConfirmModal] = useState(null); 
             const [loading, setLoading] = useState(false);
-            const [authStatus, setAuthStatus] = useState(""); // יומן סטטוס לאיפוס סיסמה
+            const [authStatus, setAuthStatus] = useState(""); 
 
             const showToast = (msg, type = 'success') => {
                 setToast({ msg, type });
@@ -125,7 +125,7 @@
                     const serverGames = snapshot.docs.map(doc => ({
                         id: doc.id,
                         ...doc.data(),
-                        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString()
+                        createdAtLabel: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toLocaleDateString('he-IL') : 'זה עתה'
                     }));
                     setGames(serverGames);
                 }, (err) => console.error(err));
@@ -320,7 +320,12 @@
                                             </div>
                                             <div className="p-5">
                                                 <h3 className="font-bold text-lg mb-1 truncate">{game.title}</h3>
-                                                <div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div>
+                                                <div className={`flex items-center gap-2 text-[11px] mb-3 ${s.textMuted}`}>
+                                                    <UserCircle size={14} className="text-fuchsia-500" />
+                                                    <span className="font-bold">{game.authorName}</span>
+                                                    <span className="opacity-40">|</span>
+                                                    <span>{game.createdAtLabel}</span>
+                                                </div>
                                                 <p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p>
                                             </div>
                                         </div>
@@ -329,7 +334,59 @@
                             </div>
                         )}
 
-                        {/* Add/Edit View */}
+                        {/* Detail View */}
+                        {view === 'detail' && selectedGame && (
+                            <div className="animate-in max-w-5xl mx-auto pb-24 md:pb-0">
+                                <div className="relative h-[450px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8">
+                                    <button onClick={() => setView('library')} className="absolute top-6 right-6 z-20 bg-black/60 backdrop-blur-md p-3 rounded-full text-white hover:bg-black transition"><ArrowRight size={24} /></button>
+                                    {user && user.uid === selectedGame.authorId && (
+                                        <div className="absolute top-6 left-6 z-20 flex gap-3">
+                                            <button onClick={() => { setGameForm(selectedGame); setEditingId(selectedGame.id); setView('add'); }} className="bg-blue-500/30 p-3 rounded-full text-blue-400 backdrop-blur-md hover:bg-blue-500/50 transition"><Edit2 size={20} /></button>
+                                            <button onClick={() => setConfirmModal({ msg: "האם אתה בטוח שברצונך למחוק את המאמר הזה?", onConfirm: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', selectedGame.id)); setView('library'); setConfirmModal(null); }})} className="bg-red-500/30 p-3 rounded-full text-red-400 backdrop-blur-md hover:bg-red-500/50 transition"><Trash2 size={20} /></button>
+                                        </div>
+                                    )}
+                                    {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" alt={selectedGame.title} /> : <div className="w-full h-full bg-gradient-to-br from-fuchsia-900 to-slate-900 flex items-center justify-center"><Gamepad2 size={100} className="opacity-10"/></div>}
+                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white bg-gradient-to-t from-black/80 to-transparent">
+                                        <h1 className="text-4xl md:text-7xl font-black mb-4 drop-shadow-lg">{selectedGame.title}</h1>
+                                        <div className="flex flex-wrap gap-6 items-center opacity-90 font-bold">
+                                            <span className="flex items-center gap-2 bg-fuchsia-600/20 px-3 py-1 rounded-full backdrop-blur-sm border border-fuchsia-500/30">
+                                                <UserCircle size={18} className="text-fuchsia-400"/> נכתב ע"י {selectedGame.authorName}
+                                            </span>
+                                            <span className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm border border-white/10">
+                                                <Calendar size={18}/> {selectedGame.createdAtLabel}
+                                            </span>
+                                            <span className="flex items-center gap-2 bg-yellow-500/20 px-3 py-1 rounded-full backdrop-blur-sm border border-yellow-500/30">
+                                                <Star size={18} className="text-yellow-400 fill-yellow-400"/> {selectedGame.rating}/10
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`${s.card} p-8 md:p-12 rounded-3xl border shadow-xl relative`}>
+                                    <div className="prose prose-invert max-w-none">
+                                        <p className="text-lg md:text-xl leading-relaxed whitespace-pre-wrap">{selectedGame.description}</p>
+                                    </div>
+                                    
+                                    {/* Footer Credits inside the article */}
+                                    <div className={`mt-12 pt-8 border-t flex flex-col md:flex-row justify-between items-center gap-4 ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-fuchsia-600 flex items-center justify-center text-white font-bold text-sm">
+                                                {selectedGame.authorName?.[0]?.toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">כותב המאמר</p>
+                                                <p className="font-bold">{selectedGame.authorName}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-center md:text-left">
+                                            <p className="text-xs font-bold opacity-50 uppercase tracking-widest">פורסם בתאריך</p>
+                                            <p className="font-bold">{selectedGame.createdAtLabel}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add View */}
                         {view === 'add' && user && (
                             <div className="max-w-3xl mx-auto animate-in pb-24 md:pb-0">
                                 <div className={`rounded-3xl p-8 border shadow-2xl ${s.card}`}>
@@ -349,7 +406,10 @@
                                             <label className="text-xs font-bold mr-2">תוכן המאמר *</label>
                                             <textarea required rows="10" placeholder="ספר לנו על המשחק..." value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full rounded-2xl p-4 outline-none resize-none ${s.input}`} />
                                         </div>
-                                        <div className="flex justify-end gap-3 pt-4">
+                                        <div className="flex justify-end gap-3 pt-4 text-sm">
+                                            <p className={s.textMuted}>המאמר יפורסם תחת השם: <span className="text-fuchsia-500 font-bold">{user.displayName}</span></p>
+                                        </div>
+                                        <div className="flex justify-end gap-3">
                                             <button type="button" onClick={() => setView('library')} className={`px-6 py-3 rounded-xl font-bold ${s.textMuted}`}>ביטול</button>
                                             <button type="submit" className="bg-fuchsia-600 px-10 py-3 rounded-xl font-bold text-white shadow-lg shadow-fuchsia-600/20 hover:bg-fuchsia-500 transition">שמור ופרסם</button>
                                         </div>
@@ -358,10 +418,11 @@
                             </div>
                         )}
 
-                        {/* Settings View */}
+                        {/* Settings View with Restored Credits */}
                         {view === 'settings' && (
                             <div className="max-w-2xl mx-auto space-y-8 animate-in pb-24 md:pb-0">
                                 <h2 className="text-4xl font-black mb-6">הגדרות</h2>
+                                
                                 <div className={`${s.card} p-6 rounded-3xl border`}>
                                     <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Palette className="text-fuchsia-500" /> מראה המערכת</h3>
                                     <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="w-full flex justify-between items-center p-5 rounded-xl bg-black/5 border border-white/5 transition hover:bg-black/10">
@@ -369,35 +430,30 @@
                                         <div className="text-fuchsia-500 font-bold">החלף</div>
                                     </button>
                                 </div>
+
                                 <div className={`${s.card} p-6 rounded-3xl border border-red-500/20`}>
                                     <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20} /> אזור סכנה</h3>
                                     <button onClick={handleDeleteAccount} className="w-full py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl font-bold transition duration-300">מחק חשבון לצמיתות</button>
                                 </div>
-                            </div>
-                        )}
 
-                        {/* Detail View */}
-                        {view === 'detail' && selectedGame && (
-                            <div className="animate-in max-w-5xl mx-auto pb-24 md:pb-0">
-                                <div className="relative h-[450px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 mb-8">
-                                    <button onClick={() => setView('library')} className="absolute top-6 right-6 z-20 bg-black/60 backdrop-blur-md p-3 rounded-full text-white hover:bg-black transition"><ArrowRight size={24} /></button>
-                                    {user && user.uid === selectedGame.authorId && (
-                                        <div className="absolute top-6 left-6 z-20 flex gap-3">
-                                            <button onClick={() => { setGameForm(selectedGame); setEditingId(selectedGame.id); setView('add'); }} className="bg-blue-500/30 p-3 rounded-full text-blue-400 backdrop-blur-md hover:bg-blue-500/50 transition"><Edit2 size={20} /></button>
-                                            <button onClick={() => setConfirmModal({ msg: "האם אתה בטוח שברצונך למחוק את המאמר הזה?", onConfirm: async () => { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', selectedGame.id)); setView('library'); setConfirmModal(null); }})} className="bg-red-500/30 p-3 rounded-full text-red-400 backdrop-blur-md hover:bg-red-500/50 transition"><Trash2 size={20} /></button>
-                                        </div>
-                                    )}
-                                    {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" alt={selectedGame.title} /> : <div className="w-full h-full bg-gradient-to-br from-fuchsia-900 to-slate-900 flex items-center justify-center"><Gamepad2 size={100} className="opacity-10"/></div>}
-                                    <div className="absolute bottom-0 right-0 w-full p-10 text-white">
-                                        <h1 className="text-4xl md:text-7xl font-black mb-4 drop-shadow-lg">{selectedGame.title}</h1>
-                                        <div className="flex flex-wrap gap-6 items-center opacity-80 font-bold">
-                                            <span className="flex items-center gap-2"><UserCircle size={20}/> נכתב ע"י {selectedGame.authorName}</span>
-                                            <span className="flex items-center gap-2"><Star size={20} className="text-yellow-400 fill-yellow-400"/> {selectedGame.rating}/10</span>
-                                        </div>
+                                {/* --- RESTORED ORIGINAL CREDITS --- */}
+                                <div className="pt-10 pb-6 text-center space-y-4">
+                                    <div className="flex items-center justify-center gap-2 text-fuchsia-500/50">
+                                        <div className="h-px w-12 bg-current"></div>
+                                        <Heart size={16} fill="currentColor" />
+                                        <div className="h-px w-12 bg-current"></div>
                                     </div>
-                                </div>
-                                <div className={`${s.card} p-8 md:p-12 rounded-3xl border shadow-xl`}>
-                                    <p className="text-lg md:text-xl leading-relaxed whitespace-pre-wrap">{selectedGame.description}</p>
+                                    
+                                    <div className="space-y-1">
+                                        <p className={`text-sm font-bold ${s.textMuted}`}>Shoval Games Wiki</p>
+                                        <p className={`text-[11px] font-medium tracking-widest uppercase flex items-center justify-center gap-2 ${s.textMuted} opacity-60`}>
+                                            Built with <Code2 size={12} className="text-fuchsia-500" /> by 
+                                            <span className="text-fuchsia-500 font-bold">Shoval</span> & 
+                                            <span className="text-cyan-500 font-bold">Gemini</span>
+                                        </p>
+                                    </div>
+                                    
+                                    <p className={`text-[10px] italic ${s.textMuted} opacity-40`}>© 2024 All Rights Reserved</p>
                                 </div>
                             </div>
                         )}
