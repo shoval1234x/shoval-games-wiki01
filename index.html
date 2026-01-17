@@ -19,7 +19,7 @@
             padding: 0;
         }
         
-        /* Custom Scrollbar for modern look */
+        /* Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(192, 38, 211, 0.2); border-radius: 10px; }
@@ -28,7 +28,6 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
 
-        /* Smooth transitions for theme switching */
         .transition-theme { transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease; }
     </style>
 </head>
@@ -37,23 +36,19 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        /**
-         * Shoval Games Wiki - Main Application Logic
-         * Features: Firebase Auth, Firestore Sync, Offline Support (Persistence), Dark/Light Mode
-         */
         import React, { useState, useEffect } from "https://esm.sh/react@18.2.0";
         import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
         import { 
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, Star, BookOpen, 
             User, Info, Home, LayoutGrid, Library, LogOut, 
             UserCircle, Lock, Mail, Edit2, AlertTriangle, X, Check,
-            Cloud, WifiOff, Settings, Moon, Sun, Palette
+            Cloud, WifiOff, Settings, Moon, Sun, Palette, KeyRound, Loader2
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { 
             getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-            signOut, onAuthStateChanged, updateProfile, deleteUser 
+            signOut, onAuthStateChanged, updateProfile, deleteUser, sendPasswordResetEmail
         } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
         import { 
             getFirestore, collection, doc, setDoc, deleteDoc, 
@@ -73,21 +68,13 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        // App ID consistent with cloud rules
         const appId = "shoval-games-wiki-v2"; 
 
-        // --- Enable Offline Persistence ---
         enableIndexedDbPersistence(db).catch((err) => {
-            if (err.code == 'failed-precondition') {
-                console.warn("Persistence failed: Multiple tabs open.");
-            } else if (err.code == 'unimplemented') {
-                console.warn("Persistence failed: Browser not supported.");
-            }
+            console.warn("Persistence failed", err.code);
         });
 
         function App() {
-            // State Management
             const [user, setUser] = useState(null); 
             const [theme, setTheme] = useState(() => localStorage.getItem('shoval_theme') || 'dark');
             const [games, setGames] = useState([]);
@@ -100,14 +87,14 @@
             const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
             const [toast, setToast] = useState(null); 
             const [confirmModal, setConfirmModal] = useState(null); 
+            const [loading, setLoading] = useState(false);
+            const [authStatus, setAuthStatus] = useState(""); // יומן סטטוס לאיפוס סיסמה
 
-            // Toast helper
             const showToast = (msg, type = 'success') => {
                 setToast({ msg, type });
                 setTimeout(() => setToast(null), 4000);
             };
 
-            // Theme Management
             useEffect(() => {
                 localStorage.setItem('shoval_theme', theme);
                 document.body.className = theme === 'dark' 
@@ -115,7 +102,6 @@
                     : "bg-slate-50 text-slate-900 overflow-hidden transition-theme";
             }, [theme]);
 
-            // Connectivity Monitor
             useEffect(() => {
                 const handleStatusChange = () => setIsOnline(navigator.onLine);
                 window.addEventListener('online', handleStatusChange);
@@ -126,7 +112,6 @@
                 };
             }, []);
 
-            // Auth Listener
             useEffect(() => {
                 return onAuthStateChanged(auth, (u) => {
                     if (u) setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email });
@@ -134,12 +119,8 @@
                 });
             }, []);
 
-            // Real-time Data Sync
             useEffect(() => {
-                const q = query(
-                    collection(db, 'artifacts', appId, 'public', 'data', 'games'), 
-                    orderBy('createdAt', 'desc')
-                );
+                const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'games'), orderBy('createdAt', 'desc'));
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const serverGames = snapshot.docs.map(doc => ({
                         id: doc.id,
@@ -147,13 +128,10 @@
                         createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString()
                     }));
                     setGames(serverGames);
-                }, (err) => {
-                    console.error("Firestore Error:", err);
-                });
+                }, (err) => console.error(err));
                 return () => unsubscribe();
             }, []);
 
-            // Dynamic Styles based on theme
             const getStyles = () => {
                 const isDark = theme === 'dark';
                 return {
@@ -169,28 +147,55 @@
             };
             const s = getStyles();
 
-            // Authentication Handlers
             const handleAuth = async (e) => {
                 e.preventDefault();
+                setLoading(true);
+                setAuthStatus("");
                 try {
                     if (view === 'login') {
                         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
                     } else {
-                        if (authForm.password.length < 6) throw { code: 'weak-password' };
+                        if (authForm.password.length < 6) throw { code: 'auth/weak-password' };
                         const c = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
                         await updateProfile(c.user, { displayName: authForm.username });
                     }
                     setView('library'); 
                     showToast("התחברת בהצלחה!");
                 } catch (err) {
-                    let errorMsg = "שגיאה בפרטים";
-                    if (err.code === 'auth/email-already-in-use') errorMsg = "האימייל כבר קיים במערכת";
-                    if (err.code === 'auth/weak-password') errorMsg = "הסיסמה חייבת להיות לפחות 6 תווים";
+                    let errorMsg = "שגיאה בפרטים. בדוק את האימייל והסיסמה.";
+                    if (err.code === 'auth/email-already-in-use') errorMsg = "האימייל הזה כבר רשום במערכת. נסה להתחבר.";
+                    if (err.code === 'auth/weak-password') errorMsg = "הסיסמה חייבת להכיל לפחות 6 תווים.";
+                    if (err.code === 'auth/user-not-found') errorMsg = "לא נמצא משתמש עם האימייל הזה.";
+                    if (err.code === 'auth/wrong-password') errorMsg = "הסיסמה שהזנת שגויה.";
+                    if (err.code === 'auth/invalid-email') errorMsg = "כתובת האימייל אינה תקינה.";
                     showToast(errorMsg, "error");
+                } finally {
+                    setLoading(false);
                 }
             };
 
-            // CRUD Handlers
+            const handleResetPassword = async () => {
+                if (!authForm.email) {
+                    setAuthStatus("נא להזין אימייל בשדה למעלה.");
+                    return showToast("הזן אימייל כדי לקבל קישור לאיפוס", "error");
+                }
+                setLoading(true);
+                setAuthStatus("מנסה לשלוח אימייל איפוס...");
+                try {
+                    await sendPasswordResetEmail(auth, authForm.email);
+                    setAuthStatus("הודעה נשלחה בהצלחה! בדוק את תיבת הדואר (וגם את הספאם).");
+                    showToast("אימייל לאיפוס סיסמה נשלח!");
+                } catch (err) {
+                    console.error(err);
+                    let msg = "שגיאה בשליחה. וודא שהאימייל תקין.";
+                    if (err.code === 'auth/user-not-found') msg = "לא נמצא משתמש עם האימייל הזה במערכת.";
+                    setAuthStatus(msg);
+                    showToast(msg, "error");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             const handleSaveGame = async (e) => {
                 e.preventDefault();
                 if (!user) return showToast("התחבר כדי לשמור", "error");
@@ -258,7 +263,7 @@
                         </div>
                     )}
 
-                    {/* Desktop Sidebar */}
+                    {/* Sidebar */}
                     <aside className={`hidden md:flex w-72 flex-col backdrop-blur-xl border-l h-full relative z-20 ${s.sidebar}`}>
                         <div className="p-8 pb-4 cursor-pointer flex-shrink-0" onClick={() => setView('library')}>
                             <div className="flex items-center gap-3 mb-2">
@@ -306,33 +311,21 @@
                                         <input type="text" placeholder="חיפוש משחקים..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full rounded-xl py-3 pr-12 pl-4 outline-none ${s.input}`} />
                                     </div>
                                 </div>
-                                {games.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-32 text-center opacity-30">
-                                        <BookOpen size={80} className="mb-6" />
-                                        <h3 className="text-2xl font-bold">הספרייה ריקה</h3>
-                                        <p>היה הראשון לשתף מאמר על משחק!</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-24 md:pb-0">
-                                        {games.filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase())).map(game => (
-                                            <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer relative ${s.card} hover:scale-[1.02] hover:shadow-2xl hover:border-fuchsia-500/30`}>
-                                                <div className="h-48 bg-black/20 relative overflow-hidden">
-                                                    {game.imageUrl ? (
-                                                        <img src={game.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={game.title} />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center"><Gamepad2 size={40} className="opacity-10" /></div>
-                                                    )}
-                                                    <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white">{game.genre || 'כללי'}</div>
-                                                </div>
-                                                <div className="p-5">
-                                                    <h3 className="font-bold text-lg mb-1 group-hover:text-fuchsia-500 transition-colors truncate">{game.title}</h3>
-                                                    <div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div>
-                                                    <p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p>
-                                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-24 md:pb-0">
+                                    {games.filter(g => g.title.toLowerCase().includes(searchTerm.toLowerCase())).map(game => (
+                                        <div key={game.id} onClick={() => { setSelectedGame(game); setView('detail'); }} className={`group rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer relative ${s.card} hover:scale-[1.02] hover:shadow-2xl hover:border-fuchsia-500/30`}>
+                                            <div className="h-48 bg-black/20 relative overflow-hidden">
+                                                {game.imageUrl ? <img src={game.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={game.title} /> : <div className="w-full h-full flex items-center justify-center"><Gamepad2 size={40} className="opacity-10" /></div>}
+                                                <div className="absolute top-3 left-3 z-10 bg-black/70 backdrop-blur px-2.5 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white">{game.genre || 'כללי'}</div>
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            <div className="p-5">
+                                                <h3 className="font-bold text-lg mb-1 truncate">{game.title}</h3>
+                                                <div className={`flex items-center gap-2 text-xs mb-3 ${s.textMuted}`}><UserCircle size={14} /><span>{game.authorName}</span></div>
+                                                <p className={`text-sm line-clamp-2 ${s.textMuted}`}>{game.description}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -350,16 +343,6 @@
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold mr-2">ז'אנר</label>
                                                 <input placeholder="לדוגמה: Sandbox, RPG" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
-                                            </div>
-                                        </div>
-                                        <div className="grid md:grid-cols-2 gap-6">
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-bold mr-2">דירוג (0-10)</label>
-                                                <input type="number" min="0" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-bold mr-2">קישור לתמונה (URL)</label>
-                                                <input placeholder="https://..." value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full rounded-xl p-3 outline-none ${s.input}`} />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
@@ -388,7 +371,6 @@
                                 </div>
                                 <div className={`${s.card} p-6 rounded-3xl border border-red-500/20`}>
                                     <h3 className="text-xl font-bold mb-4 text-red-500 flex items-center gap-2"><Trash2 size={20} /> אזור סכנה</h3>
-                                    <p className={`text-sm mb-4 ${s.textMuted}`}>מחיקת החשבון תסיר את כל הגישה שלך למאמרים שכתבת. פעולה זו בלתי הפיכה.</p>
                                     <button onClick={handleDeleteAccount} className="w-full py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl font-bold transition duration-300">מחק חשבון לצמיתות</button>
                                 </div>
                             </div>
@@ -406,9 +388,7 @@
                                         </div>
                                     )}
                                     {selectedGame.imageUrl ? <img src={selectedGame.imageUrl} className="w-full h-full object-cover" alt={selectedGame.title} /> : <div className="w-full h-full bg-gradient-to-br from-fuchsia-900 to-slate-900 flex items-center justify-center"><Gamepad2 size={100} className="opacity-10"/></div>}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-[#090513] via-transparent to-transparent"></div>
                                     <div className="absolute bottom-0 right-0 w-full p-10 text-white">
-                                        <div className="bg-fuchsia-600 w-fit px-3 py-1 rounded-full text-xs font-black mb-4 uppercase tracking-wider">{selectedGame.genre || 'Wiki'}</div>
                                         <h1 className="text-4xl md:text-7xl font-black mb-4 drop-shadow-lg">{selectedGame.title}</h1>
                                         <div className="flex flex-wrap gap-6 items-center opacity-80 font-bold">
                                             <span className="flex items-center gap-2"><UserCircle size={20}/> נכתב ע"י {selectedGame.authorName}</span>
@@ -428,14 +408,34 @@
                                 <div className={`max-w-md w-full p-10 rounded-3xl border shadow-2xl animate-in ${s.card}`}>
                                     <div className="flex justify-center mb-6 text-fuchsia-500"><UserCircle size={60} /></div>
                                     <h2 className="text-3xl font-black mb-2 text-center">{view === 'login' ? 'ברוך השב!' : 'הצטרף לקהילה'}</h2>
-                                    <p className={`text-center text-sm mb-8 ${s.textMuted}`}>{view === 'login' ? 'הכנס את הפרטים כדי להמשיך לערוך' : 'צור חשבון והתחל לכתוב מאמרים'}</p>
+                                    <p className={`text-center text-sm mb-8 ${s.textMuted}`}>{view === 'login' ? 'הכנס את הפרטים כדי להמשיך' : 'צור חשבון והתחל לשתף'}</p>
                                     <form onSubmit={handleAuth} className="space-y-4">
                                         {view === 'register' && <input required placeholder="שם תצוגה" value={authForm.username} onChange={e => setAuthForm({...authForm, username: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />}
                                         <input required type="email" placeholder="אימייל" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
                                         <input required type="password" placeholder="סיסמה (לפחות 6 תווים)" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} className={`w-full rounded-xl p-4 outline-none ${s.input}`} />
-                                        <button className="w-full py-4 bg-fuchsia-600 rounded-xl font-bold text-white mt-4 shadow-lg shadow-fuchsia-600/30 hover:bg-fuchsia-500 transition-all active:scale-95">{view === 'login' ? 'התחבר עכשיו' : 'צור חשבון'}</button>
+                                        
+                                        <button disabled={loading} className="w-full py-4 bg-fuchsia-600 rounded-xl font-bold text-white mt-4 shadow-lg shadow-fuchsia-600/30 hover:bg-fuchsia-500 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2">
+                                            {loading && <Loader2 className="animate-spin" size={20} />}
+                                            {view === 'login' ? 'התחבר עכשיו' : 'צור חשבון'}
+                                        </button>
                                     </form>
-                                    <button onClick={() => setView(view === 'login' ? 'register' : 'login')} className={`w-full text-center mt-6 text-sm font-bold ${s.textMuted} hover:text-fuchsia-500 transition-colors`}>{view === 'login' ? 'אין לך חשבון? הירשם כאן' : 'כבר יש לך חשבון? התחבר כאן'}</button>
+                                    
+                                    {view === 'login' && (
+                                        <div className="mt-6 p-4 rounded-xl bg-black/20 border border-white/5">
+                                            <button onClick={handleResetPassword} disabled={loading} className="w-full text-center text-xs font-bold text-fuchsia-400 hover:text-fuchsia-300 flex items-center justify-center gap-2 mb-2">
+                                                <KeyRound size={14} /> לחץ כאן לשליחת אימייל איפוס סיסמה
+                                            </button>
+                                            {authStatus && (
+                                                <p className={`text-[11px] text-center leading-tight ${authStatus.includes('בהצלחה') ? 'text-green-400' : 'text-red-400'}`}>
+                                                    {authStatus}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <button onClick={() => { setView(view === 'login' ? 'register' : 'login'); setAuthStatus(""); }} className={`w-full text-center mt-6 text-sm font-bold ${s.textMuted} hover:text-fuchsia-500 transition-colors`}>
+                                        {view === 'login' ? 'אין לך חשבון? הירשם כאן' : 'כבר יש לך חשבון? התחבר כאן'}
+                                    </button>
                                 </div>
                             </div>
                         )}
