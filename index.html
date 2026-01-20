@@ -73,7 +73,7 @@
         import { 
             Gamepad2, Search, Plus, Save, ArrowRight, Trash2, 
             Library, LogOut, UserCircle, Lock, Edit2, AlertTriangle, 
-            X, Check, Settings, Moon, Sun, Loader2, Camera, Mail, KeyRound, UserCog, Bell, Sparkles, Heart, Code2, Lightbulb, Menu, Layout
+            X, Check, Settings, Moon, Sun, Loader2, Camera, Mail, KeyRound, UserCog, Bell, Sparkles, Heart, Code2, Lightbulb, Menu, Layout, FlaskConical, LayoutGrid, Inbox
         } from "https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0";
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
@@ -96,9 +96,9 @@
             appId: "1:1013671724448:web:84c0a3ee694cdc1ef850c5"
         };
 
-        const APP_VERSION = "1.0.5"; 
-        const UPDATE_TITLE = "שיפורי ניווט";
-        const UPDATE_CONTENT = "הוספנו לחצן התחברות לתפריט הצד במובייל כדי להקל על הכניסה לחשבון!";
+        const APP_VERSION = "1.1.0"; 
+        const UPDATE_TITLE = "עדכון ניווט והודעות";
+        const UPDATE_CONTENT = "הוספנו תיבת הודעות (Inbox) חדשה לכולם, ואפשרות להשתמש בתפריט תחתון גם במחשב!";
         const UPDATE_DATE = "20.01.2026";
 
         const app = initializeApp(firebaseConfig);
@@ -264,10 +264,24 @@
                 finally { setLoading(false); }
             };
 
+            // Messages for Inbox
+            const inboxMessages = [
+                {
+                    id: 'welcome',
+                    title: 'הודעת הדרכה למשתמש',
+                    content: 'ברוכים הבאים לארכיון המשחקים של שובל! כאן תוכלו לצפות במאגר משחקים ענק, ואם תרשמו למערכת - תוכלו גם להוסיף מאמרים משלכם, לערוך פרופיל ולשנות הגדרות תצוגה. תהנו!',
+                    date: 'עכשיו',
+                    isSystem: true
+                }
+            ];
+
             const NavContent = () => (
                 <nav className="flex-1 px-4 space-y-2 mt-4">
                     <button onClick={() => {setView('library'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'library' ? s.navActive : s.navInactive} ${view === 'library' ? '' : 'border-transparent'}`}><Library size={20} /> הספרייה</button>
                     {user && <button onClick={() => {setView('add'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'add' ? s.navActive : s.navInactive} ${view === 'add' ? '' : 'border-transparent'}`}><Plus size={20} /> הוספת מאמר</button>}
+                    {user && <button onClick={() => {setView('user-articles'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'user-articles' ? s.navActive : s.navInactive} ${view === 'user-articles' ? '' : 'border-transparent'}`}><LayoutGrid size={20} /> כל המאמרים</button>}
+                    {user && <button onClick={() => {setView('beta'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'beta' ? s.navActive : s.navInactive} ${view === 'beta' ? '' : 'border-transparent'}`}><FlaskConical size={20} /> מאמרי בטא</button>}
+                    <button onClick={() => {setView('inbox'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'inbox' ? s.navActive : s.navInactive} ${view === 'inbox' ? '' : 'border-transparent'}`}><Inbox size={20} /> הודעות</button>
                     {user && <button onClick={() => {setView('settings'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold border transition ${view === 'settings' ? s.navActive : s.navInactive} ${view === 'settings' ? '' : 'border-transparent'}`}><Settings size={20} /> הגדרות</button>}
                 </nav>
             );
@@ -275,28 +289,21 @@
             return (
                 <div className={`flex h-screen font-sans overflow-hidden ${s.bg}`} dir="rtl">
                     
-                    {/* Delete Confirmation Modal */}
+                    {/* Modals & Toasts */}
                     {showDeleteConfirm && (
                         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade">
                             <div className={`modal-content max-w-md w-full p-8 rounded-3xl shadow-2xl border text-center ${theme === 'dark' ? 'bg-[#161b2e] border-red-500/30' : 'bg-white border-red-200'}`}>
-                                <div className="bg-red-500/10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 text-red-500">
-                                    <Trash2 size={40} />
-                                </div>
+                                <div className="bg-red-500/10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 text-red-500"><Trash2 size={40} /></div>
                                 <h2 className="text-2xl font-black mb-2 text-red-500 italic">מחיקת חשבון</h2>
-                                <p className={`mb-8 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                    האם אתה בטוח? פעולה זו תמחוק את האימייל והסיסמה שלך לצמיתות. המאמרים שלך יישארו באתר אך לא תוכל לערוך אותם יותר.
-                                </p>
+                                <p className={`mb-8 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>האם אתה בטוח? המידע ימחק לצמיתות.</p>
                                 <div className="flex gap-4">
                                     <button onClick={() => setShowDeleteConfirm(false)} className={`flex-1 py-3 rounded-xl font-bold transition ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10' : 'bg-slate-100 hover:bg-slate-200'}`}>ביטול</button>
-                                    <button onClick={handleDeleteAccount} className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-lg shadow-red-600/20 transition">
-                                        {loading ? <Loader2 className="animate-spin mx-auto"/> : 'מחק לצמיתות'}
-                                    </button>
+                                    <button onClick={handleDeleteAccount} className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-lg transition">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'מחק לצמיתות'}</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Update Modal */}
                     {showUpdateModal && (
                         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade">
                             <div className={`modal-content max-w-md w-full p-8 rounded-3xl shadow-2xl border text-center relative ${theme === 'dark' ? 'bg-[#161b2e] border-fuchsia-500/30' : 'bg-white border-fuchsia-200'}`}>
@@ -317,25 +324,25 @@
                         </div>
                     )}
 
-                    {/* Desktop Sidebar */}
-                    <aside className={`hidden md:flex w-64 flex-col border-l backdrop-blur-md ${s.sidebar}`}>
-                        <div className="p-8 cursor-pointer" onClick={() => setView('library')}>
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-fuchsia-600 rounded-lg text-white shadow-lg shadow-fuchsia-600/20"><Gamepad2 size={24} /></div>
-                                <h1 className="text-xl font-black italic">Shoval Wiki</h1>
+                    {/* Desktop Sidebar (Only if navStyle is Sidebar) */}
+                    {navStyle === 'sidebar' && (
+                        <aside className={`hidden md:flex w-64 flex-col border-l backdrop-blur-md ${s.sidebar}`}>
+                            <div className="p-8 cursor-pointer" onClick={() => setView('library')}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-fuchsia-600 rounded-lg text-white shadow-lg shadow-fuchsia-600/20"><Gamepad2 size={24} /></div>
+                                    <h1 className="text-xl font-black italic">Shoval Wiki</h1>
+                                </div>
                             </div>
-                        </div>
-                        <NavContent />
-                        <div className={`p-4 mt-auto border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
-                            {user ? (
-                                <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 hover:bg-red-500/10 transition border border-red-500/20">
-                                    <LogOut size={18}/> התנתקות
-                                </button>
-                            ) : (
-                                <button onClick={() => setView('login')} className="w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-xl text-white font-black transition shadow-lg shadow-fuchsia-600/20">התחברות</button>
-                            )}
-                        </div>
-                    </aside>
+                            <NavContent />
+                            <div className={`p-4 mt-auto border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+                                {user ? (
+                                    <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 hover:bg-red-500/10 transition border border-red-500/20"><LogOut size={18}/> התנתקות</button>
+                                ) : (
+                                    <button onClick={() => setView('login')} className="w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-xl text-white font-black transition shadow-lg shadow-fuchsia-600/20">התחברות</button>
+                                )}
+                            </div>
+                        </aside>
+                    )}
 
                     {/* Mobile Sidebar Overlay */}
                     {isSidebarOpen && navStyle === 'sidebar' && (
@@ -348,9 +355,7 @@
                                 <NavContent />
                                 <div className="mt-auto">
                                     {user ? (
-                                        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 border border-red-500/20">
-                                            <LogOut size={18}/> התנתקות
-                                        </button>
+                                        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 border border-red-500/20"><LogOut size={18}/> התנתקות</button>
                                     ) : (
                                         <button onClick={() => {setView('login'); setIsSidebarOpen(false);}} className="w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-xl text-white font-black transition shadow-lg shadow-fuchsia-600/20">התחברות</button>
                                     )}
@@ -359,17 +364,33 @@
                         </div>
                     )}
 
-                    {/* Main Content Area */}
+                    {/* Main Content */}
                     <main className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12 relative transition-colors duration-300">
                         
-                        {/* Mobile Header */}
-                        <header className="md:hidden flex justify-between items-center mb-8">
-                            <h1 className="text-2xl font-black italic shovals-brand uppercase tracking-tighter">Shoval games Wiki</h1>
-                            {navStyle === 'sidebar' && (
-                                <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-lg ${s.card}`}>
-                                    <Menu size={24}/>
+                        {/* Global Header (Visible on Mobile OR Bottom Nav Mode) */}
+                        <header className={`flex justify-between items-center mb-8 ${navStyle === 'sidebar' ? 'md:hidden' : ''}`}>
+                            <div className="flex items-center gap-4">
+                                {/* Inbox Icon - Top Left */}
+                                <button onClick={() => setView('inbox')} className={`p-2 rounded-lg relative ${s.card}`}>
+                                    <Inbox size={24} />
+                                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#090513]"></span>
                                 </button>
-                            )}
+                            </div>
+
+                            <h1 className="text-2xl font-black italic shovals-brand uppercase tracking-tighter">Shoval Wiki</h1>
+                            
+                            <div className="flex items-center gap-2">
+                                {navStyle === 'sidebar' && (
+                                    <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-lg ${s.card}`}><Menu size={24}/></button>
+                                )}
+                                {navStyle === 'bottom' && user && (
+                                    /* Logout - Top Right in Bottom Nav Mode */
+                                    <button onClick={handleLogout} className={`p-2 rounded-lg text-red-500 border border-red-500/20 ${s.card}`}><LogOut size={24}/></button>
+                                )}
+                                {navStyle === 'bottom' && !user && (
+                                    <button onClick={() => setView('login')} className="text-fuchsia-500 font-bold">התחבר</button>
+                                )}
+                            </div>
                         </header>
 
                         {view === 'library' && (
@@ -391,11 +412,27 @@
                             </div>
                         )}
 
+                        {view === 'inbox' && (
+                            <div className="max-w-2xl mx-auto animate-fade">
+                                <h2 className="text-4xl font-black mb-10 italic">תיבת הודעות</h2>
+                                <div className="space-y-4">
+                                    {inboxMessages.map(msg => (
+                                        <div key={msg.id} className={`p-6 rounded-2xl border shadow-lg ${s.card} border-l-4 border-l-fuchsia-500`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="font-bold text-lg flex items-center gap-2"><Sparkles size={16} className="text-fuchsia-500"/> {msg.title}</h3>
+                                                <span className={`text-xs ${s.textMuted}`}>{msg.date}</span>
+                                            </div>
+                                            <p className={`text-sm leading-relaxed ${s.textMuted}`}>{msg.content}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {view === 'settings' && user && (
                             <div className="max-w-2xl mx-auto animate-fade pb-20">
                                 <h2 className="text-4xl font-black mb-10 italic">הגדרות</h2>
                                 
-                                {/* UI Settings */}
                                 <div className={`p-8 rounded-3xl border shadow-xl mb-8 ${s.card}`}>
                                     <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><Layout size={20}/> מראה ותצוגה</h3>
                                     <div className="space-y-6">
@@ -404,7 +441,10 @@
                                             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="bg-fuchsia-600 text-white px-6 py-2 rounded-xl font-bold transition">החלף</button>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <p className="font-bold text-sm">ניווט במובייל</p>
+                                            <div>
+                                                <p className="font-bold text-sm">סגנון ניווט</p>
+                                                <p className={`text-xs ${s.textMuted}`}>משפיע על מחשב ומובייל</p>
+                                            </div>
                                             <div className="flex bg-black/20 p-1 rounded-xl">
                                                 <button onClick={() => setNavStyle('bottom')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${navStyle === 'bottom' ? 'bg-fuchsia-600 text-white' : s.textMuted}`}>תחתית</button>
                                                 <button onClick={() => setNavStyle('sidebar')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${navStyle === 'sidebar' ? 'bg-fuchsia-600 text-white' : s.textMuted}`}>צד</button>
@@ -413,7 +453,6 @@
                                     </div>
                                 </div>
 
-                                {/* Profile Management */}
                                 <div className={`p-8 rounded-3xl border shadow-xl mb-8 ${s.card}`}>
                                     <h3 className="text-xl font-bold mb-6 flex items-center gap-2"><UserCircle size={20}/> ניהול פרופיל</h3>
                                     <form onSubmit={updateProfileInfo} className="space-y-4">
@@ -425,29 +464,21 @@
                                             <label className="block text-xs font-bold mb-2 opacity-50">כתובת תמונת פרופיל (URL)</label>
                                             <input type="url" value={settingsForm.photoURL} onChange={e=>setSettingsForm({...settingsForm, photoURL: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
                                         </div>
-                                        <button type="submit" className="w-full py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl font-black transition shadow-lg shadow-fuchsia-600/20">
-                                            {loading ? <Loader2 className="animate-spin mx-auto"/> : 'עדכן פרופיל'}
-                                        </button>
+                                        <button type="submit" className="w-full py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl font-black transition shadow-lg shadow-fuchsia-600/20">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'עדכן פרופיל'}</button>
                                     </form>
                                 </div>
 
-                                {/* Danger Zone */}
                                 <div className={`p-8 rounded-3xl danger-zone shadow-xl mb-12`}>
                                     <h3 className="text-xl font-black mb-4 text-red-500 flex items-center gap-2"><Trash2 size={24}/> מחיקת חשבון</h3>
                                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                                         <div className="flex-1">
                                             <p className="font-bold text-red-500 mb-1">אזהרה: פעולה בלתי הפיכה!</p>
-                                            <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                                                מחיקת החשבון תמחק את האימייל, הסיסמה ושם המשתמש שלך. המאמרים שלך יישארו אך הגישה אליהם תאבד.
-                                            </p>
+                                            <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>מחיקת החשבון תמחק את האימייל, הסיסמה ושם המשתמש שלך.</p>
                                         </div>
-                                        <button onClick={() => setShowDeleteConfirm(true)} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black shadow-lg transition">
-                                            מחק חשבון
-                                        </button>
+                                        <button onClick={() => setShowDeleteConfirm(true)} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black shadow-lg transition">מחק חשבון</button>
                                     </div>
                                 </div>
 
-                                {/* Credits */}
                                 <div className="text-center pt-8 border-t border-white/5">
                                     <span className="shovals-brand text-2xl italic">Shoval's</span>
                                     <p className="text-[10px] uppercase font-bold tracking-widest mt-1 opacity-40">Powered by Gemini & Shoval</p>
@@ -455,7 +486,6 @@
                             </div>
                         )}
 
-                        {/* Login View */}
                         {(view === 'login' || view === 'register') && (
                             <div className="max-w-md mx-auto mt-20 animate-fade">
                                 <div className={`p-10 rounded-3xl border shadow-2xl text-center ${s.card}`}>
@@ -464,16 +494,13 @@
                                         {view === 'register' && <input type="text" required placeholder="שם משתמש" value={authForm.username} onChange={e=>setAuthForm({...authForm, username:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />}
                                         <input type="email" required placeholder="אימייל" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
                                         <input type="password" required placeholder="סיסמה" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                        <button className="w-full bg-fuchsia-600 text-white py-4 rounded-xl font-black text-lg shadow-xl hover:bg-fuchsia-500 transition-all">
-                                            {loading ? <Loader2 className="animate-spin mx-auto"/> : (view === 'login' ? 'התחבר' : 'צור חשבון')}
-                                        </button>
+                                        <button className="w-full bg-fuchsia-600 text-white py-4 rounded-xl font-black text-lg shadow-xl hover:bg-fuchsia-500 transition-all">{loading ? <Loader2 className="animate-spin mx-auto"/> : (view === 'login' ? 'התחבר' : 'צור חשבון')}</button>
                                     </form>
                                     <p className="mt-6 text-sm">{view === 'login' ? 'אין לך חשבון?' : 'כבר רשום?'} <button onClick={()=>setView(view==='login'?'register':'login')} className="text-fuchsia-500 font-bold underline">{view==='login'?'הירשם':'התחבר'}</button></p>
                                 </div>
                             </div>
                         )}
 
-                        {/* Detail View */}
                         {view === 'detail' && selectedGame && (
                             <div className="animate-fade max-w-4xl mx-auto">
                                 <button onClick={() => setView('library')} className={`flex items-center gap-2 mb-8 font-bold hover:text-fuchsia-500 transition ${s.textMuted}`}><ArrowRight size={20}/> חזרה</button>
@@ -485,40 +512,44 @@
                                     <span>{selectedGame.genre}</span>
                                     <span>•</span>
                                     <span>{selectedGame.authorName}</span>
-                                    <span className="text-fuchsia-500">{selectedGame.rating}/10</span>
+                                    <span>•</span>
+                                    <span>{selectedGame.dateStr}</span>
                                 </div>
-                                <div className={`p-8 rounded-3xl border whitespace-pre-wrap leading-relaxed text-lg italic ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white shadow-lg border-slate-200'}`}>
-                                    {selectedGame.description}
+                                <p className="text-lg leading-loose opacity-90 whitespace-pre-wrap">{selectedGame.description}</p>
+                            </div>
+                        )}
+                        
+                        {view === 'add' && user && (
+                            <div className="max-w-4xl mx-auto animate-fade">
+                                <h2 className="text-4xl font-black mb-10 italic">הוספת מאמר</h2>
+                                <div className={`p-8 rounded-3xl border shadow-xl ${s.card}`}>
+                                    <form onSubmit={handleSaveGame} className="space-y-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div><label className="block text-xs font-bold mb-2 opacity-50">שם המשחק</label><input required type="text" value={gameForm.title} onChange={e => setGameForm({...gameForm, title: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} /></div>
+                                            <div><label className="block text-xs font-bold mb-2 opacity-50">ז'אנר</label><input type="text" value={gameForm.genre} onChange={e => setGameForm({...gameForm, genre: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} /></div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div><label className="block text-xs font-bold mb-2 opacity-50">תמונה (URL)</label><input type="url" value={gameForm.imageUrl} onChange={e => setGameForm({...gameForm, imageUrl: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} /></div>
+                                            <div><label className="block text-xs font-bold mb-2 opacity-50">דירוג (1-10)</label><input type="number" min="1" max="10" value={gameForm.rating} onChange={e => setGameForm({...gameForm, rating: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} /></div>
+                                        </div>
+                                        <div><label className="block text-xs font-bold mb-2 opacity-50">תוכן המאמר</label><textarea required rows="10" value={gameForm.description} onChange={e => setGameForm({...gameForm, description: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 resize-none ${s.input}`}></textarea></div>
+                                        <div className="flex justify-end gap-4 pt-4">
+                                            <button type="button" onClick={() => setView('library')} className="px-8 py-3 rounded-xl font-bold opacity-50 hover:opacity-100 transition">ביטול</button>
+                                            <button type="submit" className="px-8 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl font-black shadow-lg transition">{loading ? <Loader2 className="animate-spin"/> : 'פרסם מאמר'}</button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                         )}
 
-                        {/* Add Game */}
-                        {view === 'add' && (
-                            <div className="max-w-4xl mx-auto animate-fade">
-                                <h2 className="text-4xl font-black mb-10 italic">פרסם מאמר</h2>
-                                <form onSubmit={handleSaveGame} className="space-y-6">
-                                    <div className="grid md:grid-cols-2 gap-8">
-                                        <div className="space-y-4">
-                                            <input type="text" required placeholder="שם המשחק" value={gameForm.title} onChange={e=>setGameForm({...gameForm, title:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                            <input type="text" placeholder="ז'אנר" value={gameForm.genre} onChange={e=>setGameForm({...gameForm, genre:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                            <input type="number" min="1" max="10" value={gameForm.rating} onChange={e=>setGameForm({...gameForm, rating:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                            <input type="url" placeholder="קישור לתמונה" value={gameForm.imageUrl} onChange={e=>setGameForm({...gameForm, imageUrl:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                        </div>
-                                        <textarea required placeholder="כתוב כאן..." value={gameForm.description} onChange={e=>setGameForm({...gameForm, description:e.target.value})} className={`w-full min-h-[300px] p-5 rounded-xl outline-none border focus:border-fuchsia-500 resize-none ${s.input}`}></textarea>
-                                    </div>
-                                    <button disabled={loading} className="w-full bg-fuchsia-600 text-white py-5 rounded-2xl font-black text-xl shadow-lg hover:bg-fuchsia-500 transition-all">פרסם עכשיו</button>
-                                </form>
-                            </div>
-                        )}
                     </main>
 
-                    {/* Mobile Nav - Conditionally rendered */}
                     {navStyle === 'bottom' && (
-                        <nav className={`md:hidden fixed bottom-0 left-0 right-0 p-5 flex justify-around items-center z-50 border-t backdrop-blur-md ${theme === 'dark' ? 'bg-[#0f0a1e]/90 border-white/5' : 'bg-white/90 border-slate-200'}`}>
-                            <button onClick={() => setView('library')} className={view === 'library' ? 'text-fuchsia-500' : 'text-slate-500'}><Library/></button>
-                            {user && <button onClick={() => setView('add')} className="bg-fuchsia-600 p-4 rounded-2xl text-white -mt-12 shadow-xl"><Plus/></button>}
-                            <button onClick={() => user ? setView('settings') : setView('login')} className={view === 'settings' ? 'text-fuchsia-500' : 'text-slate-500'}><UserCog/></button>
+                        <nav className={`fixed bottom-0 left-0 right-0 border-t backdrop-blur-xl flex justify-around p-4 z-50 ${theme === 'dark' ? 'bg-[#090513]/90 border-white/5' : 'bg-white/90 border-slate-200'}`}>
+                            <button onClick={() => setView('library')} className={view === 'library' ? 'text-fuchsia-500' : 'opacity-50'}><Library/></button>
+                            {user && <button onClick={() => setView('add')} className="bg-fuchsia-600 text-white p-3 rounded-full -mt-8 shadow-lg shadow-fuchsia-600/30 border-4 border-[#090513]"><Plus/></button>}
+                            {user && <button onClick={() => setView('settings')} className={view === 'settings' ? 'text-fuchsia-500' : 'opacity-50'}><Settings/></button>}
+                            {!user && <button onClick={() => setView('login')} className="text-fuchsia-500 font-bold">התחבר</button>}
                         </nav>
                     )}
                 </div>
@@ -530,4 +561,3 @@
     </script>
 </body>
 </html>
-
