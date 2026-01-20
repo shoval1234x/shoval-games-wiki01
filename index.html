@@ -97,6 +97,10 @@
         };
 
         const APP_VERSION = "1.0.4"; 
+        const UPDATE_TITLE = "שדרוג חווית משתמש";
+        const UPDATE_CONTENT = "החזרנו את ניהול הפרופיל המלא, עדכנו את כותרת המובייל והוספנו אפשרות לבחירת סגנון תפריט במובייל!";
+        const UPDATE_DATE = "19.01.2026";
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -107,18 +111,20 @@
         function App() {
             const [user, setUser] = useState(null); 
             const [theme, setTheme] = useState(() => localStorage.getItem('shoval_theme') || 'dark');
-            const [navStyle, setNavStyle] = useState(() => localStorage.getItem('shoval_nav_style') || 'bottom'); 
+            const [navStyle, setNavStyle] = useState(() => localStorage.getItem('shoval_nav_style') || 'bottom'); // 'bottom' or 'sidebar'
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             
             const [games, setGames] = useState([]);
             const [view, setView] = useState('library'); 
             const [selectedGame, setSelectedGame] = useState(null);
+            const [editingId, setEditingId] = useState(null); 
             const [gameForm, setGameForm] = useState({ title: '', genre: 'כללי', rating: 5, description: '', imageUrl: '' });
             const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
             const [settingsForm, setSettingsForm] = useState({ displayName: '', photoURL: '' });
             
             const [toast, setToast] = useState(null); 
             const [loading, setLoading] = useState(false);
+            const [showUpdateModal, setShowUpdateModal] = useState(false);
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
             const showToast = (msg, type = 'success') => {
@@ -137,6 +143,18 @@
             }, [navStyle]);
 
             useEffect(() => {
+                const lastSeenVersion = localStorage.getItem('shoval_wiki_version');
+                if (lastSeenVersion !== APP_VERSION) {
+                    setTimeout(() => setShowUpdateModal(true), 1500);
+                }
+            }, []);
+
+            const closeUpdateModal = () => {
+                setShowUpdateModal(false);
+                localStorage.setItem('shoval_wiki_version', APP_VERSION);
+            };
+
+            useEffect(() => {
                 return onAuthStateChanged(auth, (u) => {
                     if (u) {
                         setUser({ uid: u.uid, displayName: u.displayName || u.email.split('@')[0], email: u.email, photoURL: u.photoURL });
@@ -151,7 +169,8 @@
                 return onSnapshot(q, (snapshot) => {
                     setGames(snapshot.docs.map(doc => ({ 
                         id: doc.id, 
-                        ...doc.data()
+                        ...doc.data(),
+                        dateStr: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toLocaleDateString('he-IL') : 'זה עתה'
                     })));
                 }, (error) => console.error("Firestore Error:", error));
             }, []);
@@ -228,7 +247,7 @@
             const handleSaveGame = async (e) => {
                 e.preventDefault();
                 setLoading(true);
-                const id = Date.now().toString();
+                const id = editingId || Date.now().toString();
                 try {
                     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', id), {
                         ...gameForm,
@@ -264,13 +283,30 @@
                                     <Trash2 size={40} />
                                 </div>
                                 <h2 className="text-2xl font-black mb-2 text-red-500 italic">מחיקת חשבון</h2>
-                                <p className={`mb-8 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>האם אתה בטוח? פעולה זו תמחוק את החשבון לצמיתות.</p>
+                                <p className={`mb-8 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+                                    האם אתה בטוח? פעולה זו תמחוק את האימייל והסיסמה שלך לצמיתות. המאמרים שלך יישארו באתר אך לא תוכל לערוך אותם יותר.
+                                </p>
                                 <div className="flex gap-4">
                                     <button onClick={() => setShowDeleteConfirm(false)} className={`flex-1 py-3 rounded-xl font-bold transition ${theme === 'dark' ? 'bg-white/5 hover:bg-white/10' : 'bg-slate-100 hover:bg-slate-200'}`}>ביטול</button>
                                     <button onClick={handleDeleteAccount} className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-lg shadow-red-600/20 transition">
                                         {loading ? <Loader2 className="animate-spin mx-auto"/> : 'מחק לצמיתות'}
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Update Modal */}
+                    {showUpdateModal && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade">
+                            <div className={`modal-content max-w-md w-full p-8 rounded-3xl shadow-2xl border text-center relative ${theme === 'dark' ? 'bg-[#161b2e] border-fuchsia-500/30' : 'bg-white border-fuchsia-200'}`}>
+                                <h2 className="text-2xl font-black mt-6 mb-2 text-fuchsia-500 italic uppercase">Update!</h2>
+                                <h3 className="text-xl font-bold mb-4">{UPDATE_TITLE}</h3>
+                                <div className={`p-4 rounded-xl mb-6 text-sm leading-relaxed ${theme === 'dark' ? 'bg-black/20 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                                    {UPDATE_CONTENT}
+                                    <div className="mt-2 text-xs opacity-50 font-bold">{UPDATE_DATE} • v{APP_VERSION}</div>
+                                </div>
+                                <button onClick={closeUpdateModal} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white py-3 rounded-xl font-black transition shadow-lg">חזור לאתר</button>
                             </div>
                         </div>
                     )}
@@ -310,18 +346,27 @@
                                     <button onClick={() => setIsSidebarOpen(false)} className={s.textMuted}><X/></button>
                                 </div>
                                 <NavContent />
+                                <div className="mt-auto">
+                                    {user && (
+                                        <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 border border-red-500/20">
+                                            <LogOut size={18}/> התנתקות
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {/* Main Content Area */}
-                    <main className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12 relative">
+                    <main className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12 relative transition-colors duration-300">
                         
                         {/* Mobile Header */}
                         <header className="md:hidden flex justify-between items-center mb-8">
                             <h1 className="text-2xl font-black italic shovals-brand uppercase tracking-tighter">Shoval games Wiki</h1>
                             {navStyle === 'sidebar' && (
-                                <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-lg ${s.card}`}><Menu size={24}/></button>
+                                <button onClick={() => setIsSidebarOpen(true)} className={`p-2 rounded-lg ${s.card}`}>
+                                    <Menu size={24}/>
+                                </button>
                             )}
                         </header>
 
@@ -378,32 +423,46 @@
                                             <label className="block text-xs font-bold mb-2 opacity-50">כתובת תמונת פרופיל (URL)</label>
                                             <input type="url" value={settingsForm.photoURL} onChange={e=>setSettingsForm({...settingsForm, photoURL: e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
                                         </div>
-                                        <button type="submit" className="w-full py-4 bg-fuchsia-600 text-white rounded-xl font-black transition shadow-lg shadow-fuchsia-600/20">עדכן פרופיל</button>
+                                        <button type="submit" className="w-full py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl font-black transition shadow-lg shadow-fuchsia-600/20">
+                                            {loading ? <Loader2 className="animate-spin mx-auto"/> : 'עדכן פרופיל'}
+                                        </button>
                                     </form>
                                 </div>
 
                                 {/* Danger Zone */}
                                 <div className={`p-8 rounded-3xl danger-zone shadow-xl mb-12`}>
                                     <h3 className="text-xl font-black mb-4 text-red-500 flex items-center gap-2"><Trash2 size={24}/> מחיקת חשבון</h3>
-                                    <button onClick={() => setShowDeleteConfirm(true)} className="w-full px-6 py-3 bg-red-600 text-white rounded-xl font-black transition">מחק חשבון לצמיתות</button>
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                                        <div className="flex-1">
+                                            <p className="font-bold text-red-500 mb-1">אזהרה: פעולה בלתי הפיכה!</p>
+                                            <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                                                מחיקת החשבון תמחק את האימייל, הסיסמה ושם המשתמש שלך. המאמרים שלך יישארו אך הגישה אליהם תאבד.
+                                            </p>
+                                        </div>
+                                        <button onClick={() => setShowDeleteConfirm(true)} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black shadow-lg transition">
+                                            מחק חשבון
+                                        </button>
+                                    </div>
                                 </div>
 
+                                {/* Credits */}
                                 <div className="text-center pt-8 border-t border-white/5">
-                                    <span className="shovals-brand text-2xl italic">Shoval's Wiki</span>
+                                    <span className="shovals-brand text-2xl italic">Shoval's</span>
+                                    <p className="text-[10px] uppercase font-bold tracking-widest mt-1 opacity-40">Powered by Gemini & Shoval</p>
                                 </div>
                             </div>
                         )}
 
                         {/* Login View */}
                         {(view === 'login' || view === 'register') && (
-                            <div className="max-w-md mx-auto mt-20 animate-fade text-center">
-                                <div className={`p-10 rounded-3xl border shadow-2xl ${s.card}`}>
+                            <div className="max-w-md mx-auto mt-20 animate-fade">
+                                <div className={`p-10 rounded-3xl border shadow-2xl text-center ${s.card}`}>
                                     <h2 className="text-3xl font-black mb-8 italic shovals-brand uppercase">Shoval Wiki</h2>
-                                    <form onSubmit={handleAuth} className="space-y-4 text-right">
+                                    <form onSubmit={handleAuth} className="space-y-4">
                                         {view === 'register' && <input type="text" required placeholder="שם משתמש" value={authForm.username} onChange={e=>setAuthForm({...authForm, username:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />}
                                         <input type="email" required placeholder="אימייל" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
                                         <input type="password" required placeholder="סיסמה" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className={`w-full p-4 rounded-xl outline-none border focus:border-fuchsia-500 ${s.input}`} />
-                                        <button className="w-full bg-fuchsia-600 text-white py-4 rounded-xl font-black text-lg">
+                                        <button className="w-full bg-fuchsia-600 text-white py-4 rounded-xl font-black text-lg shadow-xl hover:bg-fuchsia-500 transition-all">
                                             {loading ? <Loader2 className="animate-spin mx-auto"/> : (view === 'login' ? 'התחבר' : 'צור חשבון')}
                                         </button>
                                     </form>
@@ -446,13 +505,13 @@
                                         </div>
                                         <textarea required placeholder="כתוב כאן..." value={gameForm.description} onChange={e=>setGameForm({...gameForm, description:e.target.value})} className={`w-full min-h-[300px] p-5 rounded-xl outline-none border focus:border-fuchsia-500 resize-none ${s.input}`}></textarea>
                                     </div>
-                                    <button disabled={loading} className="w-full bg-fuchsia-600 text-white py-5 rounded-2xl font-black text-xl">פרסם עכשיו</button>
+                                    <button disabled={loading} className="w-full bg-fuchsia-600 text-white py-5 rounded-2xl font-black text-xl shadow-lg hover:bg-fuchsia-500 transition-all">פרסם עכשיו</button>
                                 </form>
                             </div>
                         )}
                     </main>
 
-                    {/* Mobile Bottom Nav */}
+                    {/* Mobile Nav - Conditionally rendered */}
                     {navStyle === 'bottom' && (
                         <nav className={`md:hidden fixed bottom-0 left-0 right-0 p-5 flex justify-around items-center z-50 border-t backdrop-blur-md ${theme === 'dark' ? 'bg-[#0f0a1e]/90 border-white/5' : 'bg-white/90 border-slate-200'}`}>
                             <button onClick={() => setView('library')} className={view === 'library' ? 'text-fuchsia-500' : 'text-slate-500'}><Library/></button>
@@ -469,5 +528,4 @@
     </script>
 </body>
 </html>
-
 
