@@ -96,10 +96,10 @@
             appId: "1:1013671724448:web:84c0a3ee694cdc1ef850c5"
         };
 
-        const APP_VERSION = "1.0.4"; 
-        const UPDATE_TITLE = "שדרוג חווית משתמש";
-        const UPDATE_CONTENT = "החזרנו את ניהול הפרופיל המלא, עדכנו את כותרת המובייל והוספנו אפשרות לבחירת סגנון תפריט במובייל!";
-        const UPDATE_DATE = "19.01.2026";
+        const APP_VERSION = "1.0.5"; 
+        const UPDATE_TITLE = "שיפורי ניווט";
+        const UPDATE_CONTENT = "הוספנו לחצן התחברות לתפריט הצד במובייל כדי להקל על הכניסה לחשבון!";
+        const UPDATE_DATE = "20.01.2026";
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -111,7 +111,7 @@
         function App() {
             const [user, setUser] = useState(null); 
             const [theme, setTheme] = useState(() => localStorage.getItem('shoval_theme') || 'dark');
-            const [navStyle, setNavStyle] = useState(() => localStorage.getItem('shoval_nav_style') || 'bottom'); // 'bottom' or 'sidebar'
+            const [navStyle, setNavStyle] = useState(() => localStorage.getItem('shoval_nav_style') || 'bottom'); 
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             
             const [games, setGames] = useState([]);
@@ -347,10 +347,12 @@
                                 </div>
                                 <NavContent />
                                 <div className="mt-auto">
-                                    {user && (
+                                    {user ? (
                                         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-red-500 border border-red-500/20">
                                             <LogOut size={18}/> התנתקות
                                         </button>
+                                    ) : (
+                                        <button onClick={() => {setView('login'); setIsSidebarOpen(false);}} className="w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-500 rounded-xl text-white font-black transition shadow-lg shadow-fuchsia-600/20">התחברות</button>
                                     )}
                                 </div>
                             </div>
